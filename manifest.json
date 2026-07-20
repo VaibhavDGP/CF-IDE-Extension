@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "cpeasy",
+  "version": "1.0",
+  "description": "Embeds a LeetCode-style split-screen IDE directly inside Codeforces problem pages with dynamic code state synchronization.",
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icon.png"
+  },
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [ 
+    "https://codeforces.com/*",
+    "https://your-backend-api.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://codeforces.com/problemset/problem/*",
+        "https://codeforces.com/contest/*/problem/*"
+      ],
+      "js": ["content.js"],
+      "css": ["styles.css"]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["*.js", "*.css", "*.wasm"],
+      "matches": ["https://codeforces.com/*"]
+    }
+  ]
+}
