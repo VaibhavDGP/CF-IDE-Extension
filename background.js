@@ -1,0 +1,1 @@
+console.log("cpeasy service worker registered successfully.");
