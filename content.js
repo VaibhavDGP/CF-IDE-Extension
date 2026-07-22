@@ -24,7 +24,8 @@ if (problemTitle) {
         rightPane.id = 'cpeasy-ide-container';
         rightPane.className = 'cpeasy-right-pane';
 
-        // Expanded Language Dropdown options
+        // Main IDE HTML
+        // Main IDE HTML with Full Language Support
         rightPane.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                 <select id="cpeasy-lang-select" style="background: #2d2d2d; color: white; border: 1px solid #444; padding: 4px 8px; border-radius: 4px; font-weight: bold; cursor: pointer; outline: none;">
@@ -47,68 +48,51 @@ if (problemTitle) {
 
         body.appendChild(rightPane);
 
-        const initCodeMirror = () => {
-            const targetTextArea = document.getElementById('cpeasy-textarea-editor');
-            const langSelect = document.getElementById('cpeasy-lang-select');
+        // Core Initialization Logic
+        const targetTextArea = document.getElementById('cpeasy-textarea-editor');
+        const langSelect = document.getElementById('cpeasy-lang-select');
+        
+        const problemKey = 'cpeasy_code_' + window.location.pathname.replace(/\/$/, ""); 
+        const langKey = 'cpeasy_lang_pref';
+
+        const savedLang = localStorage.getItem(langKey);
+        if (savedLang) {
+            langSelect.value = savedLang;
+        }
+        
+        const savedCode = localStorage.getItem(problemKey);
+        if (savedCode) {
+            targetTextArea.value = savedCode; 
+        }
+        
+        if (targetTextArea && typeof window.CodeMirror !== 'undefined') {
+            const editor = window.CodeMirror.fromTextArea(targetTextArea, {
+                mode: langSelect.value,
+                theme: "material",
+                lineNumbers: true,
+                autoCloseBrackets: true,
+                indentUnit: 4
+            });
             
-            if (targetTextArea && typeof CodeMirror !== 'undefined') {
-                window.cpeasyEditor = CodeMirror.fromTextArea(targetTextArea, {
-                    mode: langSelect.value,
-                    theme: "material",
-                    lineNumbers: true,
-                    autoCloseBrackets: true,
-                    indentUnit: 4
-                });
-                
-                setTimeout(() => window.cpeasyEditor.refresh(), 200);
+            window.cpeasyEditor = editor; 
 
-                langSelect.addEventListener('change', (e) => {
-                    window.cpeasyEditor.setOption("mode", e.target.value);
-                });
-            }
-        };
+            setTimeout(() => editor.refresh(), 200);
 
-        if (!document.getElementById('cpeasy-cm-core')) {
-            const cmCss = document.createElement('link');
-            cmCss.rel = 'stylesheet';
-            cmCss.href = 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css';
-            document.head.appendChild(cmCss);
+            // BULLETPROOF AUTO-SAVE LOGIC
+            editor.on('change', () => {
+                const currentText = editor.getValue();
+                localStorage.setItem(problemKey, currentText);
+                console.log("✅ cpeasy Auto-saved:", currentText.length, "characters");
+            });
 
-            const cmThemeCss = document.createElement('link');
-            cmThemeCss.rel = 'stylesheet';
-            cmThemeCss.href = 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/theme/material.min.css';
-            document.head.appendChild(cmThemeCss);
-
-            const cmScript = document.createElement('script');
-            cmScript.id = 'cpeasy-cm-core';
-            cmScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js';
-            document.head.appendChild(cmScript);
-
-            // Clean array-based script loader for multiple languages
-            cmScript.onload = () => {
-                const modes = [
-                    'clike/clike.min.js',       // Handles C, C++, Java, C#
-                    'python/python.min.js',     // Handles Python
-                    'javascript/javascript.min.js', // Handles JavaScript
-                    'rust/rust.min.js',         // Handles Rust
-                    'go/go.min.js'              // Handles Go
-                ];
-                
-                let scriptsLoaded = 0;
-                modes.forEach(mode => {
-                    const script = document.createElement('script');
-                    script.src = `https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/${mode}`;
-                    script.onload = () => {
-                        scriptsLoaded++;
-                        if (scriptsLoaded === modes.length) {
-                            initCodeMirror(); // Initialize IDE only when all languages are loaded
-                        }
-                    };
-                    document.head.appendChild(script);
-                });
-            };
+            // SAVE LANGUAGE PREFERENCE
+            langSelect.addEventListener('change', (e) => {
+                const selectedLang = e.target.value;
+                editor.setOption("mode", selectedLang);
+                localStorage.setItem(langKey, selectedLang);
+            });
         } else {
-            initCodeMirror();
+            console.error("❌ CodeMirror is not loaded. Check manifest.json and lib folder.");
         }
 
         document.getElementById('close-cpeasy-ide').addEventListener('click', () => {

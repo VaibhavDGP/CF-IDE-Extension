@@ -26,12 +26,21 @@
   },
   "content_scripts": [
     {
-      "matches": [
-        "https://codeforces.com/problemset/problem/*",
-        "https://codeforces.com/contest/*/problem/*"
+      "matches": ["*://codeforces.com/*", "*://*.codeforces.com/*"],
+      "css": [
+        "styles.css",
+        "lib/codemirror.min.css",
+        "lib/material.min.css"
       ],
-      "js": ["content.js"],
-      "css": ["styles.css"]
+      "js": [
+        "lib/codemirror.min.js",
+        "lib/clike.min.js",
+        "lib/python.min.js",
+        "lib/javascript.js",
+        "lib/rust.js",
+        "lib/go.js",
+        "content.js"
+      ]
     }
   ],
   "web_accessible_resources": [
