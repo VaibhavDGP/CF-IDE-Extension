@@ -69,13 +69,13 @@ if (problemTitle) {
                     </div>
                 </div>
                 
-                <div id="cpeasy-editor-wrapper" style="height: 55%; flex-basis: 55%; flex-shrink: 0; position: relative;">
+                <div id="cpeasy-editor-wrapper" style="height: 50%; flex-basis: 50%; flex-shrink: 0; position: relative;">
                     <textarea id="cpeasy-textarea-editor" placeholder="// Write your code here..." style="display: none;"></textarea>
                 </div>
                 
                 <div id="cpeasy-resizer-y" style="height: 8px; background: #333; cursor: row-resize; margin: 4px 0; border-radius: 4px; flex-shrink: 0; transition: background 0.2s;" onmouseover="this.style.background='#555'" onmouseout="this.style.background='#333'"></div>
                 
-                <div id="cpeasy-console-wrapper" style="flex: 1; min-height: 100px; background: #1e1e1e; border: 1px solid #444; border-radius: 6px; padding: 10px; overflow-y: auto; display: flex; flex-direction: column;">
+                <div id="cpeasy-console-wrapper" style="flex: 1; min-height: 120px; background: #1e1e1e; border: 1px solid #444; border-radius: 6px; padding: 10px; overflow-y: auto; display: flex; flex-direction: column;">
                     <div style="font-weight: bold; color: #888; margin-bottom: 6px; border-bottom: 1px solid #333; padding-bottom: 4px; flex-shrink: 0;">Console Output:</div>
                     <div id="cpeasy-console-output" style="white-space: pre-wrap; flex: 1; overflow-y: auto; color: #d4d4d4; font-family: monospace; font-size: 12px;">Click 'Run Code' to test against sample testcases...</div>
                 </div>
@@ -93,7 +93,10 @@ if (problemTitle) {
         const langSelect = document.getElementById('cpeasy-lang-select');
         
         const problemKey = 'cpeasy_code_' + window.location.pathname.replace(/\/$/, ""); 
+        const customInputKey = 'cpeasy_custom_input_' + window.location.pathname.replace(/\/$/, "");
         const langKey = 'cpeasy_lang_pref';
+
+        let activeTabIndex = 0; // Track currently selected tab index
 
         const savedLang = localStorage.getItem(langKey);
         if (savedLang) {
@@ -211,28 +214,32 @@ if (problemTitle) {
                     return;
                 }
 
+                let activeCustomInput = "";
+                const existingCustomTextarea = document.getElementById('cpeasy-custom-textarea');
+                if (existingCustomTextarea) {
+                    activeCustomInput = existingCustomTextarea.value;
+                    localStorage.setItem(customInputKey, activeCustomInput);
+                } else {
+                    activeCustomInput = localStorage.getItem(customInputKey) || "";
+                }
+
                 consoleOutput.innerHTML = `<div style="color: #3b82f6; font-weight: bold;">⏳ Scraping testcases & compiling via Wandbox...</div>`;
                 runBtn.disabled = true;
                 runBtn.style.background = "#64748b";
 
                 try {
-                    // 1. Scrape Test Cases
+                    // 1. Scrape Sample Test Cases
                     const inputElements = document.querySelectorAll('.sample-test .input pre');
                     const outputElements = document.querySelectorAll('.sample-test .output pre');
-
-                    if (inputElements.length === 0) {
-                        consoleOutput.innerText = "❌ No sample test cases found on this page!";
-                        runBtn.disabled = false;
-                        runBtn.style.background = "#3b82f6";
-                        return;
-                    }
 
                     const testCases = [];
                     inputElements.forEach((inputEl, index) => {
                         const rawInput = extractCleanText(inputEl);
                         const rawOutput = extractCleanText(outputElements[index]);
-                        testCases.push({ input: rawInput, expected: rawOutput });
+                        testCases.push({ input: rawInput, expected: rawOutput, isCustom: false });
                     });
+
+                    testCases.push({ input: activeCustomInput, expected: "", isCustom: true });
 
                     // 2. Setup UI Tabs
                     consoleOutput.innerHTML = `
@@ -247,13 +254,17 @@ if (problemTitle) {
 
                     testCases.forEach((tc, idx) => {
                         const tabBtn = document.createElement('button');
-                        tabBtn.innerText = `Case ${idx + 1} (⏳)`;
+                        const isCustomTab = tc.isCustom;
+                        tabBtn.innerText = isCustomTab ? `✏️ Custom Input` : `Case ${idx + 1} (⏳)`;
                         tabBtn.style.cssText = `
                             background: transparent; color: #888; border: none; padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; transition: all 0.2s;
                         `;
                         tabBtn.id = `cpeasy-tab-${idx}`;
                         
                         tabBtn.addEventListener('click', () => {
+                            // Remember active tab
+                            activeTabIndex = idx;
+
                             Array.from(tabsContainer.children).forEach(b => {
                                 b.style.backgroundColor = 'transparent';
                                 b.style.border = 'none';
@@ -261,6 +272,35 @@ if (problemTitle) {
                             tabBtn.style.backgroundColor = '#333';
                             
                             const res = results[idx];
+
+                            if (isCustomTab) {
+                                contentContainer.innerHTML = `
+                                    <div style="margin-bottom: 10px;">
+                                        <div style="color: #a3a3a3; font-size: 12px; margin-bottom: 4px; font-weight: 600;">Custom Testcase Input:</div>
+                                        <textarea id="cpeasy-custom-textarea" style="width: 100%; height: 70px; background: #2b2b2b; border: 1px solid #444; border-radius: 6px; color: #e5e5e5; font-family: monospace; font-size: 12px; padding: 8px; box-sizing: border-box; outline: none; resize: vertical;" placeholder="Type custom input here...">${tc.input}</textarea>
+                                    </div>
+                                    <div id="cpeasy-custom-output-box">
+                                        ${res ? `
+                                            <div style="margin-bottom: 8px; font-size: 14px; font-weight: bold; color: ${res.error ? '#ef4444' : '#22c55e'};">
+                                                ${res.status}
+                                            </div>
+                                            <div style="color: #a3a3a3; font-size: 12px; margin-bottom: 4px; font-weight: 600;">Output</div>
+                                            <div style="background: #2b2b2b; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 13px; color: #e5e5e5; white-space: pre-wrap;">${res.actual || 'No Output'}</div>
+                                            ${res.error ? `<div style="margin-top: 8px; color: #ef4444; font-family: monospace; font-size: 12px; white-space: pre-wrap; background: #3a1010; padding: 8px; border-radius: 6px;">${res.error}</div>` : ''}
+                                        ` : `<div style="color: #888; font-size: 12px;">Type input above and click 'Run Code' to execute custom testcase.</div>`}
+                                    </div>
+                                `;
+
+                                const customArea = document.getElementById('cpeasy-custom-textarea');
+                                if (customArea) {
+                                    customArea.addEventListener('input', (e) => {
+                                        tc.input = e.target.value;
+                                        localStorage.setItem(customInputKey, e.target.value);
+                                    });
+                                }
+                                return;
+                            }
+
                             if (!res) {
                                 contentContainer.innerHTML = `<div style="color: #a3a3a3;">Running... Please wait.</div>`;
                                 return;
@@ -292,8 +332,10 @@ if (problemTitle) {
                         tabsContainer.appendChild(tabBtn);
                     });
 
-                    if (tabsContainer.children[0]) {
-                        tabsContainer.children[0].click();
+                    // Retain previously selected active tab (e.g. Custom Input tab)
+                    const targetTabToSelect = (activeTabIndex >= 0 && activeTabIndex < testCases.length) ? activeTabIndex : 0;
+                    if (tabsContainer.children[targetTabToSelect]) {
+                        tabsContainer.children[targetTabToSelect].click();
                     }
 
                     // 3. Execute Code against Wandbox API
@@ -330,7 +372,9 @@ if (problemTitle) {
                             let compileErr = (data.compiler_error || data.program_error || "").trim();
                             let status = "";
 
-                            if (compileErr && data.status !== "0" && data.status !== 0) {
+                            if (tc.isCustom) {
+                                status = compileErr ? "Execution Error ⚠️" : "Finished 🟢";
+                            } else if (compileErr && data.status !== "0" && data.status !== 0) {
                                 status = "Compilation Error ⚠️";
                                 tabBtn.style.color = "#ef4444";
                             } else if (data.status !== "0" && data.status !== 0) {
@@ -356,9 +400,12 @@ if (problemTitle) {
                                 error: compileErr
                             };
 
-                            tabBtn.innerText = `Case ${i + 1}`; 
+                            if (!tc.isCustom) {
+                                tabBtn.innerText = `Case ${i + 1}`;
+                            }
 
-                            if (tabBtn.style.backgroundColor === 'rgb(51, 51, 51)' || tabBtn.style.backgroundColor === '#333') {
+                            // Live update view if this tab is currently active
+                            if (i === activeTabIndex) {
                                 tabBtn.click();
                             }
 
@@ -369,10 +416,12 @@ if (problemTitle) {
                                 error: apiError.message || "Unknown Connection Error" 
                             };
                             
-                            tabBtn.innerText = `Case ${i + 1} (Err)`;
-                            tabBtn.style.color = "#ef4444";
+                            if (!tc.isCustom) {
+                                tabBtn.innerText = `Case ${i + 1} (Err)`;
+                                tabBtn.style.color = "#ef4444";
+                            }
                             
-                            if (tabBtn.style.backgroundColor === 'rgb(51, 51, 51)' || tabBtn.style.backgroundColor === '#333') {
+                            if (i === activeTabIndex) {
                                 tabBtn.click();
                             }
                         }
