@@ -96,7 +96,7 @@ if (problemTitle) {
         const customInputKey = 'cpeasy_custom_input_' + window.location.pathname.replace(/\/$/, "");
         const langKey = 'cpeasy_lang_pref';
 
-        let activeTabIndex = 0; // Track currently selected tab index
+        let activeTabIndex = 0; 
 
         const savedLang = localStorage.getItem(langKey);
         if (savedLang) {
@@ -180,6 +180,20 @@ if (problemTitle) {
                 }
             });
 
+            // --- ERROR LOG FORMATTER HELPER ---
+            const formatErrorLog = (rawError) => {
+                if (!rawError) return "";
+                // 1. Remove ugly temporary server compiler paths
+                let cleaned = rawError.replace(/\/tmp\/wandbox-[^\/]+\//g, '');
+                // 2. Escape HTML
+                cleaned = cleaned.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+                // 3. Highlight keywords
+                cleaned = cleaned.replace(/(error:)/gi, '<span style="color: #ef4444; font-weight: bold;">$1</span>');
+                cleaned = cleaned.replace(/(warning:)/gi, '<span style="color: #f59e0b; font-weight: bold;">$1</span>');
+                cleaned = cleaned.replace(/(Segmentation fault|SIGSEGV|SIGFPE|out_of_range|std::bad_alloc)/gi, '<span style="color: #ec4899; font-weight: bold;">💥 $1</span>');
+                return cleaned;
+            };
+
             // --- WANDBOX COMPILER MAPPING ---
             const wandboxCompilerMap = {
                 "text/x-c++src": "gcc-head",
@@ -262,7 +276,6 @@ if (problemTitle) {
                         tabBtn.id = `cpeasy-tab-${idx}`;
                         
                         tabBtn.addEventListener('click', () => {
-                            // Remember active tab
                             activeTabIndex = idx;
 
                             Array.from(tabsContainer.children).forEach(b => {
@@ -281,12 +294,17 @@ if (problemTitle) {
                                     </div>
                                     <div id="cpeasy-custom-output-box">
                                         ${res ? `
-                                            <div style="margin-bottom: 8px; font-size: 14px; font-weight: bold; color: ${res.error ? '#ef4444' : '#22c55e'};">
+                                            <div style="font-size: 14px; font-weight: bold; margin-bottom: 8px; color: ${res.error ? '#ef4444' : '#22c55e'};">
                                                 ${res.status}
                                             </div>
                                             <div style="color: #a3a3a3; font-size: 12px; margin-bottom: 4px; font-weight: 600;">Output</div>
                                             <div style="background: #2b2b2b; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 13px; color: #e5e5e5; white-space: pre-wrap;">${res.actual || 'No Output'}</div>
-                                            ${res.error ? `<div style="margin-top: 8px; color: #ef4444; font-family: monospace; font-size: 12px; white-space: pre-wrap; background: #3a1010; padding: 8px; border-radius: 6px;">${res.error}</div>` : ''}
+                                            ${res.error ? `
+                                                <div style="margin-top: 10px;">
+                                                    <div style="color: #ef4444; font-size: 12px; margin-bottom: 4px; font-weight: 600;">Error Logs:</div>
+                                                    <div style="background: #281010; border: 1px solid #ef4444; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 12px; color: #f87171; white-space: pre-wrap; overflow-x: auto;">${formatErrorLog(res.error)}</div>
+                                                </div>
+                                            ` : ''}
                                         ` : `<div style="color: #888; font-size: 12px;">Type input above and click 'Run Code' to execute custom testcase.</div>`}
                                     </div>
                                 `;
@@ -307,10 +325,10 @@ if (problemTitle) {
                             }
 
                             const isPassed = res.status === 'Accepted ✅';
-                            const statusColor = isPassed ? '#22c55e' : '#ef4444';
+                            const statusColor = isPassed ? '#22c55e' : (res.status.includes('Compilation') ? '#f59e0b' : '#ef4444');
 
                             contentContainer.innerHTML = `
-                                <div style="margin-bottom: 12px; font-size: 16px; font-weight: bold; color: ${statusColor};">
+                                <div style="font-size: 16px; font-weight: bold; margin-bottom: 12px; color: ${statusColor};">
                                     ${res.status}
                                 </div>
                                 <div style="margin-bottom: 12px;">
@@ -325,14 +343,18 @@ if (problemTitle) {
                                     <div style="color: #a3a3a3; font-size: 12px; margin-bottom: 4px; font-weight: 600;">Expected Output</div>
                                     <div style="background: #2b2b2b; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 13px; color: #e5e5e5; white-space: pre-wrap;">${tc.expected}</div>
                                 </div>
-                                ${res.error ? `<div style="margin-top: 12px; color: #ef4444; font-family: monospace; font-size: 12px; white-space: pre-wrap; background: #3a1010; padding: 10px; border-radius: 6px;">${res.error}</div>` : ''}
+                                ${res.error ? `
+                                    <div style="margin-top: 12px;">
+                                        <div style="color: #ef4444; font-size: 12px; margin-bottom: 4px; font-weight: 600;">Error Logs:</div>
+                                        <div style="background: #281010; border: 1px solid #ef4444; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 12px; color: #f87171; white-space: pre-wrap; overflow-x: auto;">${formatErrorLog(res.error)}</div>
+                                    </div>
+                                ` : ''}
                             `;
                         });
 
                         tabsContainer.appendChild(tabBtn);
                     });
 
-                    // Retain previously selected active tab (e.g. Custom Input tab)
                     const targetTabToSelect = (activeTabIndex >= 0 && activeTabIndex < testCases.length) ? activeTabIndex : 0;
                     if (tabsContainer.children[targetTabToSelect]) {
                         tabsContainer.children[targetTabToSelect].click();
@@ -376,9 +398,9 @@ if (problemTitle) {
                                 status = compileErr ? "Execution Error ⚠️" : "Finished 🟢";
                             } else if (compileErr && data.status !== "0" && data.status !== 0) {
                                 status = "Compilation Error ⚠️";
-                                tabBtn.style.color = "#ef4444";
+                                tabBtn.style.color = "#f59e0b";
                             } else if (data.status !== "0" && data.status !== 0) {
-                                status = "Runtime Error ⚠️";
+                                status = "Runtime Error 💥";
                                 compileErr = compileErr || data.program_error || "Runtime Execution Error";
                                 tabBtn.style.color = "#ef4444";
                             } else {
@@ -404,7 +426,6 @@ if (problemTitle) {
                                 tabBtn.innerText = `Case ${i + 1}`;
                             }
 
-                            // Live update view if this tab is currently active
                             if (i === activeTabIndex) {
                                 tabBtn.click();
                             }
@@ -413,7 +434,7 @@ if (problemTitle) {
                             results[i] = { 
                                 status: "Execution Error 🔌", 
                                 actual: "", 
-                                error: apiError.message || "Unknown Connection Error" 
+                                error: apiError.message || "Unknown Connection Error"
                             };
                             
                             if (!tc.isCustom) {
