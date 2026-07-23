@@ -66,6 +66,14 @@ if (problemTitle) {
                         </select>
                         <button id="cpeasy-template-btn" style="background: #4b5563; color: white; border: none; padding: 6px 10px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 12px;" title="Insert boilerplate code template">📋 Template</button>
                     </div>
+
+                    <!-- ENHANCED STOPWATCH HEADER SECTION -->
+                    <div style="display: flex; align-items: center; gap: 8px; background: #1e1e1e; padding: 4px 10px; border-radius: 8px; border: 1px solid #333; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+                        <span id="cpeasy-stopwatch-display" style="font-family: monospace; font-size: 15px; font-weight: bold; color: #3b82f6; letter-spacing: 0.5px;">⏱️ 00:00</span>
+                        <button id="cpeasy-timer-toggle" style="background: #2d2d2d; color: #e5e5e5; border: 1px solid #444; border-radius: 5px; cursor: pointer; font-size: 14px; padding: 3px 8px; transition: all 0.2s;" onmouseover="this.style.background='#3d3d3d'" onmouseout="this.style.background='#2d2d2d'" title="Play/Pause Stopwatch">⏸️</button>
+                        <button id="cpeasy-timer-reset" style="background: #2d2d2d; color: #e5e5e5; border: 1px solid #444; border-radius: 5px; cursor: pointer; font-size: 14px; padding: 3px 8px; transition: all 0.2s;" onmouseover="this.style.background='#3d3d3d'" onmouseout="this.style.background='#2d2d2d'" title="Reset Stopwatch">🔄</button>
+                    </div>
+
                     <div style="display: flex; gap: 8px; flex-shrink: 0;">
                         <button id="cpeasy-run-btn" style="background: #3b82f6; color: white; border: none; padding: 6px 14px; border-radius: 4px; font-weight: bold; cursor: pointer;">Run Code</button>
                         <button id="close-cpeasy-ide" style="background: #ef4444; color: white; border: none; padding: 6px 14px; border-radius: 4px; font-weight: bold; cursor: pointer;">Close</button>
@@ -90,6 +98,50 @@ if (problemTitle) {
         `;
 
         body.appendChild(rightPane);
+
+        // --- STOPWATCH LOGIC ---
+        let stopwatchInterval = null;
+        let secondsElapsed = 0;
+        let isTimerRunning = true;
+
+        const formatTime = (totalSec) => {
+            const hrs = Math.floor(totalSec / 3600);
+            const mins = Math.floor((totalSec % 3600) / 60);
+            const secs = totalSec % 60;
+            const mStr = String(mins).padStart(2, '0');
+            const sStr = String(secs).padStart(2, '0');
+            if (hrs > 0) {
+                const hStr = String(hrs).padStart(2, '0');
+                return `⏱️ ${hStr}:${mStr}:${sStr}`;
+            }
+            return `⏱️ ${mStr}:${sStr}`;
+        };
+
+        const startStopwatch = () => {
+            if (stopwatchInterval) clearInterval(stopwatchInterval);
+            stopwatchInterval = setInterval(() => {
+                if (isTimerRunning) {
+                    secondsElapsed++;
+                    const displayEl = document.getElementById('cpeasy-stopwatch-display');
+                    if (displayEl) displayEl.innerText = formatTime(secondsElapsed);
+                }
+            }, 1000);
+        };
+
+        startStopwatch();
+
+        const timerToggleBtn = document.getElementById('cpeasy-timer-toggle');
+        timerToggleBtn.addEventListener('click', () => {
+            isTimerRunning = !isTimerRunning;
+            timerToggleBtn.innerText = isTimerRunning ? '⏸️' : '▶️';
+        });
+
+        const timerResetBtn = document.getElementById('cpeasy-timer-reset');
+        timerResetBtn.addEventListener('click', () => {
+            secondsElapsed = 0;
+            const displayEl = document.getElementById('cpeasy-stopwatch-display');
+            if (displayEl) displayEl.innerText = formatTime(0);
+        });
 
         // --- CODE TEMPLATES MAP ---
         const codeTemplates = {
@@ -123,7 +175,6 @@ if (problemTitle) {
         if (savedCode && savedCode.trim() !== "") {
             targetTextArea.value = savedCode; 
         } else {
-            // Apply default boilerplate template if no code saved
             targetTextArea.value = codeTemplates[langSelect.value] || "";
         }
         
@@ -150,13 +201,11 @@ if (problemTitle) {
                 editor.setOption("mode", selectedLang);
                 localStorage.setItem(langKey, selectedLang);
 
-                // Auto-load template if editor is empty
                 if (editor.getValue().trim() === "") {
                     editor.setValue(codeTemplates[selectedLang] || "");
                 }
             });
 
-            // "📋 Template" button click handler
             templateBtn.addEventListener('click', () => {
                 const currentLang = langSelect.value;
                 const template = codeTemplates[currentLang];
@@ -537,6 +586,8 @@ if (problemTitle) {
 
         // --- CLOSE BUTTON ---
         document.getElementById('close-cpeasy-ide').addEventListener('click', () => {
+            if (stopwatchInterval) clearInterval(stopwatchInterval);
+
             rightPane.remove();
             
             body.style.display = '';
