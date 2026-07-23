@@ -53,16 +53,19 @@ if (problemTitle) {
             
             <div style="display: flex; flex-direction: column; height: 100%; padding: 10px; box-sizing: border-box; overflow: hidden; background: #141414;">
                 <div style="display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; margin-bottom: 8px;">
-                    <select id="cpeasy-lang-select" style="background: #2d2d2d; color: white; border: 1px solid #444; padding: 6px 10px; border-radius: 4px; font-weight: bold; cursor: pointer; outline: none;">
-                        <option value="text/x-c++src">C++</option>
-                        <option value="text/x-csrc">C</option>
-                        <option value="text/x-java">Java</option>
-                        <option value="text/x-python">Python</option>
-                        <option value="javascript">JavaScript (Node.js)</option>
-                        <option value="text/x-csharp">C#</option>
-                        <option value="text/x-rustsrc">Rust</option>
-                        <option value="text/x-go">Go</option>
-                    </select>
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                        <select id="cpeasy-lang-select" style="background: #2d2d2d; color: white; border: 1px solid #444; padding: 6px 8px; border-radius: 4px; font-weight: bold; cursor: pointer; outline: none;">
+                            <option value="text/x-c++src">C++</option>
+                            <option value="text/x-csrc">C</option>
+                            <option value="text/x-java">Java</option>
+                            <option value="text/x-python">Python</option>
+                            <option value="javascript">JavaScript (Node.js)</option>
+                            <option value="text/x-csharp">C#</option>
+                            <option value="text/x-rustsrc">Rust</option>
+                            <option value="text/x-go">Go</option>
+                        </select>
+                        <button id="cpeasy-template-btn" style="background: #4b5563; color: white; border: none; padding: 6px 10px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 12px;" title="Insert boilerplate code template">📋 Template</button>
+                    </div>
                     <div style="display: flex; gap: 8px; flex-shrink: 0;">
                         <button id="cpeasy-run-btn" style="background: #3b82f6; color: white; border: none; padding: 6px 14px; border-radius: 4px; font-weight: bold; cursor: pointer;">Run Code</button>
                         <button id="close-cpeasy-ide" style="background: #ef4444; color: white; border: none; padding: 6px 14px; border-radius: 4px; font-weight: bold; cursor: pointer;">Close</button>
@@ -88,9 +91,22 @@ if (problemTitle) {
 
         body.appendChild(rightPane);
 
+        // --- CODE TEMPLATES MAP ---
+        const codeTemplates = {
+            "text/x-c++src": `#include <iostream>\nusing namespace std;\n\nvoid solve() {\n    // Write your solution here\n}\n\nint main() {\n    ios_base::sync_with_stdio(false);\n    cin.tie(NULL);\n    int t = 1;\n    if (cin >> t) {\n        while (t--) {\n            solve();\n        }\n    }\n    return 0;\n}\n`,
+            "text/x-csrc": `#include <stdio.h>\n\nvoid solve() {\n    // Write your solution here\n}\n\nint main() {\n    int t = 1;\n    if (scanf("%d", &t) == 1) {\n        while (t--) {\n            solve();\n        }\n    }\n    return 0;\n}\n`,
+            "text/x-java": `import java.util.Scanner;\n\npublic class Main {\n    public static void solve(Scanner sc) {\n        // Write your solution here\n    }\n\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        if (sc.hasNextInt()) {\n            int t = sc.nextInt();\n            while (t-- > 0) {\n                solve(sc);\n            }\n        }\n        sc.close();\n    }\n}\n`,
+            "text/x-python": `import sys\n\ndef solve():\n    # Write your solution here\n    pass\n\ndef main():\n    input = sys.stdin.read\n    # Write input reading logic here\n\nif __name__ == '__main__':\n    main()\n`,
+            "javascript": `const fs = require('fs');\n\nfunction solve() {\n    const input = fs.readFileSync('/dev/stdin', 'utf-8').trim().split(/\\s+/);\n    if (!input || input.length === 0 || input[0] === '') return;\n    // Write solution logic here\n}\n\nsolve();\n`,
+            "text/x-csharp": `using System;\n\nclass Program {\n    static void Main() {\n        // Write your solution here\n    }\n}\n`,
+            "text/x-rustsrc": `use std::io::{self, Read};\n\nfn main() {\n    let mut input = String::new();\n    io::stdin().read_to_string(&mut input).unwrap();\n    // Write solution logic here\n}\n`,
+            "text/x-go": `package main\n\nimport (\n    "fmt"\n)\n\nfunc main() {\n    var t int\n    if _, err := fmt.Scan(&t); err == nil {\n        for i := 0; i < t; i++ {\n            // Write solution logic here\n        }\n    }\n}\n`
+        };
+
         // --- CORE INITIALIZATION ---
         const targetTextArea = document.getElementById('cpeasy-textarea-editor');
         const langSelect = document.getElementById('cpeasy-lang-select');
+        const templateBtn = document.getElementById('cpeasy-template-btn');
         
         const problemKey = 'cpeasy_code_' + window.location.pathname.replace(/\/$/, ""); 
         const customInputKey = 'cpeasy_custom_input_' + window.location.pathname.replace(/\/$/, "");
@@ -104,8 +120,11 @@ if (problemTitle) {
         }
         
         const savedCode = localStorage.getItem(problemKey);
-        if (savedCode) {
+        if (savedCode && savedCode.trim() !== "") {
             targetTextArea.value = savedCode; 
+        } else {
+            // Apply default boilerplate template if no code saved
+            targetTextArea.value = codeTemplates[langSelect.value] || "";
         }
         
         if (targetTextArea && typeof window.CodeMirror !== 'undefined') {
@@ -130,6 +149,27 @@ if (problemTitle) {
                 const selectedLang = e.target.value;
                 editor.setOption("mode", selectedLang);
                 localStorage.setItem(langKey, selectedLang);
+
+                // Auto-load template if editor is empty
+                if (editor.getValue().trim() === "") {
+                    editor.setValue(codeTemplates[selectedLang] || "");
+                }
+            });
+
+            // "📋 Template" button click handler
+            templateBtn.addEventListener('click', () => {
+                const currentLang = langSelect.value;
+                const template = codeTemplates[currentLang];
+                
+                if (template) {
+                    if (editor.getValue().trim() !== "") {
+                        if (confirm("Reset editor with default template for this language?")) {
+                            editor.setValue(template);
+                        }
+                    } else {
+                        editor.setValue(template);
+                    }
+                }
             });
 
             // --- RESIZING LOGIC ---
@@ -183,11 +223,8 @@ if (problemTitle) {
             // --- ERROR LOG FORMATTER HELPER ---
             const formatErrorLog = (rawError) => {
                 if (!rawError) return "";
-                // 1. Remove ugly temporary server compiler paths
                 let cleaned = rawError.replace(/\/tmp\/wandbox-[^\/]+\//g, '');
-                // 2. Escape HTML
                 cleaned = cleaned.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-                // 3. Highlight keywords
                 cleaned = cleaned.replace(/(error:)/gi, '<span style="color: #ef4444; font-weight: bold;">$1</span>');
                 cleaned = cleaned.replace(/(warning:)/gi, '<span style="color: #f59e0b; font-weight: bold;">$1</span>');
                 cleaned = cleaned.replace(/(Segmentation fault|SIGSEGV|SIGFPE|out_of_range|std::bad_alloc)/gi, '<span style="color: #ec4899; font-weight: bold;">💥 $1</span>');
