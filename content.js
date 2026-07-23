@@ -14,14 +14,14 @@ if (problemTitle) {
 
         const body = document.body;
         
-        // Ekdum clean Flexbox setup for the whole page
+        // Clean Flexbox setup for the whole page
         body.style.setProperty('display', 'flex', 'important');
         body.style.setProperty('width', '100vw', 'important');
         body.style.setProperty('height', '100vh', 'important');
         body.style.setProperty('overflow', 'hidden', 'important');
         body.style.setProperty('margin', '0', 'important');
 
-        // Codeforces ka main wrapper
+        // Codeforces main wrapper
         const mainContent = document.querySelector('#body') || document.querySelector('#pageContent') || body.children[0];
         
         if (mainContent) {
@@ -36,11 +36,10 @@ if (problemTitle) {
         const rightPane = document.createElement('div');
         rightPane.id = 'cpeasy-ide-container';
         
-        // STRICT LIMITS APPLIED HERE (max-width: 50vw !important)
         rightPane.style.cssText = `
             width: 450px;
             min-width: 350px !important;
-            max-width: 50vw !important; /* Kisi bhi halat me 50% se bada nahi hoga */
+            max-width: 50vw !important;
             flex-shrink: 0;
             height: 100vh;
             position: relative;
@@ -130,7 +129,7 @@ if (problemTitle) {
                 localStorage.setItem(langKey, selectedLang);
             });
 
-            // --- BULLETPROOF MATH LOGIC FOR RESIZING ---
+            // --- RESIZING LOGIC ---
             const resizerX = document.getElementById('cpeasy-resizer-x');
             const resizerY = document.getElementById('cpeasy-resizer-y');
             const editorWrapper = document.getElementById('cpeasy-editor-wrapper');
@@ -154,17 +153,12 @@ if (problemTitle) {
                 if (isResizingX) {
                     const screenWidth = window.innerWidth;
                     let targetWidth = screenWidth - e.clientX;
-                    
-                    // Forcefully clamp width between 350px and exactly 50% of screen width
                     targetWidth = Math.max(350, Math.min(targetWidth, screenWidth / 2));
-                    
-                    // Set inline width securely
                     rightPane.style.setProperty('width', targetWidth + 'px', 'important');
                 }
                 
                 if (isResizingY) {
                     const newHeight = e.clientY - 50; 
-                    
                     if (newHeight > 100 && newHeight < window.innerHeight - 200) {
                         editorWrapper.style.height = newHeight + 'px';
                         editorWrapper.style.flexBasis = newHeight + 'px';
@@ -179,90 +173,216 @@ if (problemTitle) {
                     isResizingY = false;
                     document.body.style.cursor = 'default';
                     document.body.style.userSelect = 'auto';
-                    
                     if (window.cpeasyEditor) window.cpeasyEditor.refresh();
                 }
             });
 
-            // --- RUN CODE LOGIC ---
+            // --- WANDBOX COMPILER MAPPING ---
+            const wandboxCompilerMap = {
+                "text/x-c++src": "gcc-head",
+                "text/x-csrc": "gcc-head-c",
+                "text/x-java": "openjdk-head",
+                "text/x-python": "cpython-head",
+                "javascript": "nodejs-head",
+                "text/x-csharp": "dotnetcore-head",
+                "text/x-rustsrc": "rust-head",
+                "text/x-go": "go-head"
+            };
+
+            const extractCleanText = (preElement) => {
+                if (!preElement) return "";
+                const lines = preElement.querySelectorAll('.test-example-line');
+                if (lines.length > 0) {
+                    return Array.from(lines).map(line => line.innerText.trim()).join('\n').trim();
+                }
+                return preElement.innerText.trim();
+            };
+
             const runBtn = document.getElementById('cpeasy-run-btn');
             const consoleOutput = document.getElementById('cpeasy-console-output');
 
-            runBtn.addEventListener('click', () => {
+            runBtn.addEventListener('click', async () => {
                 const code = editor.getValue();
+                const selectedMode = langSelect.value;
+                const compilerName = wandboxCompilerMap[selectedMode];
 
                 if (!code || code.trim() === "") {
                     consoleOutput.innerText = "Error: Code box is empty! 😅";
                     return;
                 }
 
-                consoleOutput.innerText = "⏳ Extracting sample test cases...";
+                consoleOutput.innerHTML = `<div style="color: #3b82f6; font-weight: bold;">⏳ Scraping testcases & compiling via Wandbox...</div>`;
+                runBtn.disabled = true;
+                runBtn.style.background = "#64748b";
 
                 try {
+                    // 1. Scrape Test Cases
                     const inputElements = document.querySelectorAll('.sample-test .input pre');
                     const outputElements = document.querySelectorAll('.sample-test .output pre');
 
                     if (inputElements.length === 0) {
                         consoleOutput.innerText = "❌ No sample test cases found on this page!";
+                        runBtn.disabled = false;
+                        runBtn.style.background = "#3b82f6";
                         return;
                     }
 
                     const testCases = [];
-                    
                     inputElements.forEach((inputEl, index) => {
-                        const rawInput = inputEl.innerText.trim();
-                        const rawOutput = outputElements[index] ? outputElements[index].innerText.trim() : 'N/A';
-                        
-                        testCases.push({
-                            input: rawInput,
-                            output: rawOutput
-                        });
+                        const rawInput = extractCleanText(inputEl);
+                        const rawOutput = extractCleanText(outputElements[index]);
+                        testCases.push({ input: rawInput, expected: rawOutput });
                     });
 
+                    // 2. Setup UI Tabs
                     consoleOutput.innerHTML = `
-                        <div id="cpeasy-test-tabs" style="display: flex; gap: 8px; margin-bottom: 12px; border-bottom: 1px solid #333; padding-bottom: 8px;"></div>
+                        <div id="cpeasy-test-tabs" style="display: flex; gap: 8px; margin-bottom: 12px; border-bottom: 1px solid #333; padding-bottom: 8px; overflow-x: auto;"></div>
                         <div id="cpeasy-test-content"></div>
                     `;
 
                     const tabsContainer = document.getElementById('cpeasy-test-tabs');
                     const contentContainer = document.getElementById('cpeasy-test-content');
 
+                    const results = new Array(testCases.length).fill(null);
+
                     testCases.forEach((tc, idx) => {
                         const tabBtn = document.createElement('button');
-                        tabBtn.innerText = `Sample ${idx + 1}`;
+                        tabBtn.innerText = `Case ${idx + 1} (⏳)`;
                         tabBtn.style.cssText = `
-                            background: transparent; color: ${idx === 0 ? '#fff' : '#888'}; border: none; padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; transition: all 0.2s; background-color: ${idx === 0 ? '#333' : 'transparent'};
+                            background: transparent; color: #888; border: none; padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; transition: all 0.2s;
                         `;
-
+                        tabBtn.id = `cpeasy-tab-${idx}`;
+                        
                         tabBtn.addEventListener('click', () => {
                             Array.from(tabsContainer.children).forEach(b => {
-                                b.style.color = '#888';
                                 b.style.backgroundColor = 'transparent';
+                                b.style.border = 'none';
                             });
-                            
-                            tabBtn.style.color = '#fff';
                             tabBtn.style.backgroundColor = '#333';
+                            
+                            const res = results[idx];
+                            if (!res) {
+                                contentContainer.innerHTML = `<div style="color: #a3a3a3;">Running... Please wait.</div>`;
+                                return;
+                            }
+
+                            const isPassed = res.status === 'Accepted ✅';
+                            const statusColor = isPassed ? '#22c55e' : '#ef4444';
 
                             contentContainer.innerHTML = `
-                                <div style="margin-bottom: 16px;">
-                                    <div style="color: #a3a3a3; font-size: 12px; margin-bottom: 8px; font-weight: 600;">Input</div>
-                                    <div style="background: #2b2b2b; padding: 12px; border-radius: 8px; font-family: monospace; font-size: 13px; color: #e5e5e5; white-space: pre-wrap; line-height: 1.6; border: 1px solid #3b3b3b;">${tc.input}</div>
+                                <div style="margin-bottom: 12px; font-size: 16px; font-weight: bold; color: ${statusColor};">
+                                    ${res.status}
                                 </div>
-                                
+                                <div style="margin-bottom: 12px;">
+                                    <div style="color: #a3a3a3; font-size: 12px; margin-bottom: 4px; font-weight: 600;">Input</div>
+                                    <div style="background: #2b2b2b; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 13px; color: #e5e5e5; white-space: pre-wrap;">${tc.input}</div>
+                                </div>
+                                <div style="margin-bottom: 12px;">
+                                    <div style="color: #a3a3a3; font-size: 12px; margin-bottom: 4px; font-weight: 600;">Actual Output</div>
+                                    <div style="background: #2b2b2b; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 13px; color: ${isPassed ? '#22c55e' : '#ef4444'}; white-space: pre-wrap;">${res.actual || 'No Output'}</div>
+                                </div>
                                 <div>
-                                    <div style="color: #a3a3a3; font-size: 12px; margin-bottom: 8px; font-weight: 600;">Expected Output</div>
-                                    <div style="background: #2b2b2b; padding: 12px; border-radius: 8px; font-family: monospace; font-size: 13px; color: #e5e5e5; white-space: pre-wrap; line-height: 1.6; border: 1px solid #3b3b3b;">${tc.output}</div>
+                                    <div style="color: #a3a3a3; font-size: 12px; margin-bottom: 4px; font-weight: 600;">Expected Output</div>
+                                    <div style="background: #2b2b2b; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 13px; color: #e5e5e5; white-space: pre-wrap;">${tc.expected}</div>
                                 </div>
+                                ${res.error ? `<div style="margin-top: 12px; color: #ef4444; font-family: monospace; font-size: 12px; white-space: pre-wrap; background: #3a1010; padding: 10px; border-radius: 6px;">${res.error}</div>` : ''}
                             `;
                         });
 
                         tabsContainer.appendChild(tabBtn);
                     });
 
-                    tabsContainer.children[0].click();
+                    if (tabsContainer.children[0]) {
+                        tabsContainer.children[0].click();
+                    }
+
+                    // 3. Execute Code against Wandbox API
+                    for (let i = 0; i < testCases.length; i++) {
+                        const tc = testCases[i];
+                        const tabBtn = document.getElementById(`cpeasy-tab-${i}`);
+                        
+                        try {
+                            const response = await new Promise((resolve) => {
+                                chrome.runtime.sendMessage({
+                                    action: "executeCode",
+                                    payload: {
+                                        compiler: compilerName,
+                                        code: code,
+                                        stdin: tc.input
+                                    }
+                                }, (res) => {
+                                    if (chrome.runtime.lastError) {
+                                        resolve({ success: false, error: chrome.runtime.lastError.message });
+                                    } else {
+                                        resolve(res);
+                                    }
+                                });
+                            });
+
+                            if (!response || !response.success) {
+                                throw new Error(response ? response.error : "Background script communication failed.");
+                            }
+
+                            const data = response.data;
+                            if (!data) throw new Error("Empty response received from Wandbox.");
+
+                            let actualOut = (data.program_output || "").trim();
+                            let compileErr = (data.compiler_error || data.program_error || "").trim();
+                            let status = "";
+
+                            if (compileErr && data.status !== "0" && data.status !== 0) {
+                                status = "Compilation Error ⚠️";
+                                tabBtn.style.color = "#ef4444";
+                            } else if (data.status !== "0" && data.status !== 0) {
+                                status = "Runtime Error ⚠️";
+                                compileErr = compileErr || data.program_error || "Runtime Execution Error";
+                                tabBtn.style.color = "#ef4444";
+                            } else {
+                                const cleanActual = actualOut.replace(/\r\n/g, '\n');
+                                const cleanExpected = tc.expected.replace(/\r\n/g, '\n');
+                                
+                                if (cleanActual === cleanExpected) {
+                                    status = "Accepted ✅";
+                                    tabBtn.style.color = "#22c55e"; 
+                                } else {
+                                    status = "Wrong Answer ❌";
+                                    tabBtn.style.color = "#ef4444"; 
+                                }
+                            }
+
+                            results[i] = {
+                                status: status,
+                                actual: actualOut,
+                                error: compileErr
+                            };
+
+                            tabBtn.innerText = `Case ${i + 1}`; 
+
+                            if (tabBtn.style.backgroundColor === 'rgb(51, 51, 51)' || tabBtn.style.backgroundColor === '#333') {
+                                tabBtn.click();
+                            }
+
+                        } catch (apiError) {
+                            results[i] = { 
+                                status: "Execution Error 🔌", 
+                                actual: "", 
+                                error: apiError.message || "Unknown Connection Error" 
+                            };
+                            
+                            tabBtn.innerText = `Case ${i + 1} (Err)`;
+                            tabBtn.style.color = "#ef4444";
+                            
+                            if (tabBtn.style.backgroundColor === 'rgb(51, 51, 51)' || tabBtn.style.backgroundColor === '#333') {
+                                tabBtn.click();
+                            }
+                        }
+                    }
 
                 } catch (err) {
                     consoleOutput.innerText = `❌ Error: ${err.message}`;
+                } finally {
+                    runBtn.disabled = false;
+                    runBtn.style.background = "#3b82f6";
                 }
             });
 
@@ -279,7 +399,7 @@ if (problemTitle) {
                 const cfLangId = languageMap[cmLang];
 
                 if (!code || code.trim() === "") {
-                    alert("Bhai, code toh likh le pehle! 😅");
+                    alert("Please write code before submitting! 😅");
                     return;
                 }
 
@@ -300,7 +420,7 @@ if (problemTitle) {
 
                     cfSubmitButton.click();
                 } else {
-                    alert("❌ Submit form nahi mila! Kya tum Codeforces par Login ho?");
+                    alert("❌ Submit form not found! Make sure you are logged into Codeforces.");
                 }
             });
 
@@ -308,7 +428,7 @@ if (problemTitle) {
             console.error("❌ CodeMirror is not loaded. Check manifest.json and lib folder.");
         }
 
-        // --- CLOSE BUTTON FIX (Clean up everything on close) ---
+        // --- CLOSE BUTTON ---
         document.getElementById('close-cpeasy-ide').addEventListener('click', () => {
             rightPane.remove();
             

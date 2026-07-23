@@ -16,17 +16,20 @@
     "activeTab",
     "storage"
   ],
-  "host_permissions": [ 
-    "https://codeforces.com/*",
-    "https://your-backend-api.com/*"
+  "host_permissions": [
+    "*://codeforces.com/*",
+    "*://*.codeforces.com/*",
+    "https://wandbox.org/*"
   ],
   "background": {
-    "service_worker": "background.js",
-    "type": "module"
+    "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": ["*://codeforces.com/*", "*://*.codeforces.com/*"],
+      "matches": [
+        "*://codeforces.com/*",
+        "*://*.codeforces.com/*"
+      ],
       "css": [
         "styles.css",
         "lib/codemirror.min.css",
@@ -45,8 +48,14 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["*.js", "*.css", "*.wasm"],
-      "matches": ["https://codeforces.com/*"]
+      "resources": [
+        "*.js",
+        "*.css",
+        "*.wasm"
+      ],
+      "matches": [
+        "https://codeforces.com/*"
+      ]
     }
   ]
 }
