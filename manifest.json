@@ -31,7 +31,7 @@
         "*://*.codeforces.com/*"
       ],
       "css": [
-        "styles.css",
+        "css/styles.css",
         "lib/codemirror.min.css",
         "lib/material.min.css"
       ],
@@ -42,7 +42,10 @@
         "lib/javascript.js",
         "lib/rust.js",
         "lib/go.js",
-        "content.js"
+        "js/config.js",
+        "js/utils.js",
+        "js/autofill.js",
+        "js/ide.js"
       ]
     }
   ],

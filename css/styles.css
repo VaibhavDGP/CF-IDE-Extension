@@ -4,7 +4,7 @@ body.cpeasy-split-body {
     flex-direction: row !important;
     width: 100vw !important;
     height: 100vh !important;
-    overflow: hidden !important; /* Page ka main double scroll block karega */
+    overflow: hidden !important; 
     margin: 0 !important;
     padding: 0 !important;
 }
@@ -14,7 +14,7 @@ body.cpeasy-split-body {
     flex: 1 !important;
     width: 50vw !important;
     height: 100vh !important;
-    overflow-y: auto !important; /* Top tabs, question aur sidebox sab ek sath scroll honge */
+    overflow-y: auto !important; 
     overflow-x: auto !important;
     scroll-behavior: smooth !important;
 }
@@ -51,9 +51,22 @@ body.cpeasy-split-body {
     background-color: #2563EB !important;
 }
 
+/* 5. CodeMirror Resets (Previously in JS) */
 .CodeMirror {
     flex-grow: 1 !important;
     height: 70% !important;
     border-radius: 6px !important;
     font-size: 14px !important;
+    font-family: monospace !important;
+}
+
+.CodeMirror-gutters {
+    background-color: #1a1a1a !important;
+    border-right: 1px solid #333 !important;
+}
+
+#cpeasy-editor-wrapper {
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
 }

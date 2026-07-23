@@ -1,88 +1,5 @@
 console.log("🚀 cpeasy: Active DOM Target Initialized!");
 
-// --- AUTO-FILL ON SUBMIT PAGE (NO AUTO-SUBMIT) ---
-(() => {
-    const pendingCode = localStorage.getItem("cpeasy_pending_submit_code");
-    const pendingLang = localStorage.getItem("cpeasy_pending_submit_lang");
-    const pendingProblemCode = localStorage.getItem("cpeasy_pending_submit_problem_code");
-
-    if (pendingCode && window.location.pathname.includes("/submit")) {
-        const autoFillInterval = setInterval(() => {
-            const cfLangSelect = document.querySelector('select[name="programTypeId"]');
-            const cfProblemInput = document.querySelector('input[name="submittedProblemCode"]') || 
-                                   document.querySelector('input[name="submittedProblemIndex"]') ||
-                                   document.querySelector('select[name="submittedProblemIndex"]');
-            const cfSourceTextarea = document.querySelector('textarea[name="source"]') || document.querySelector('#sourceCodeTextarea');
-
-            if (cfLangSelect && cfSourceTextarea) {
-                clearInterval(autoFillInterval);
-
-                const updateCodeInEditors = (src) => {
-                    cfSourceTextarea.value = src;
-                    cfSourceTextarea.dispatchEvent(new Event('input', { bubbles: true }));
-                    cfSourceTextarea.dispatchEvent(new Event('change', { bubbles: true }));
-
-                    if (window.ace) {
-                        try {
-                            const aceEditor = window.ace.edit("editor");
-                            if (aceEditor) aceEditor.setValue(src, -1);
-                        } catch(e) {}
-                    }
-
-                    const cmEl = document.querySelector('.CodeMirror');
-                    if (cmEl && cmEl.CodeMirror) {
-                        try { cmEl.CodeMirror.setValue(src); } catch(e) {}
-                    }
-                };
-
-                // 1. Fill Language
-                if (pendingLang) {
-                    cfLangSelect.value = pendingLang;
-                    cfLangSelect.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-
-                // 2. Fill Problem Code / Index
-                if (cfProblemInput && pendingProblemCode) {
-                    cfProblemInput.value = pendingProblemCode;
-                    cfProblemInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    cfProblemInput.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-
-                // 3. Fill Source Code
-                updateCodeInEditors(pendingCode);
-
-                // Clean pending storage after filling
-                localStorage.removeItem("cpeasy_pending_submit_code");
-                localStorage.removeItem("cpeasy_pending_submit_lang");
-                localStorage.removeItem("cpeasy_pending_submit_problem_code");
-            }
-        }, 150);
-    }
-})();
-
-// --- INJECT DYNAMIC CSS ---
-const styleTag = document.createElement('style');
-styleTag.id = 'cpeasy-custom-styles';
-styleTag.innerHTML = `
-    .CodeMirror {
-        height: 100% !important;
-        font-family: monospace !important;
-        font-size: 13px !important;
-    }
-    .CodeMirror-gutters {
-        background-color: #1a1a1a !important;
-        border-right: 1px solid #333 !important;
-    }
-    #cpeasy-editor-wrapper {
-        display: flex !important;
-        flex-direction: column !important;
-        overflow: hidden !important;
-    }
-`;
-if (!document.getElementById('cpeasy-custom-styles')) {
-    document.head.appendChild(styleTag);
-}
-
 const problemTitle = document.querySelector('.problem-statement .header .title');
 
 if (problemTitle) {
@@ -183,26 +100,13 @@ if (problemTitle) {
         let secondsElapsed = 0;
         let isTimerRunning = true;
 
-        const formatTime = (totalSec) => {
-            const hrs = Math.floor(totalSec / 3600);
-            const mins = Math.floor((totalSec % 3600) / 60);
-            const secs = totalSec % 60;
-            const mStr = String(mins).padStart(2, '0');
-            const sStr = String(secs).padStart(2, '0');
-            if (hrs > 0) {
-                const hStr = String(hrs).padStart(2, '0');
-                return `⏱️ ${hStr}:${mStr}:${sStr}`;
-            }
-            return `⏱️ ${mStr}:${sStr}`;
-        };
-
         const startStopwatch = () => {
             if (stopwatchInterval) clearInterval(stopwatchInterval);
             stopwatchInterval = setInterval(() => {
                 if (isTimerRunning) {
                     secondsElapsed++;
                     const displayEl = document.getElementById('cpeasy-stopwatch-display');
-                    if (displayEl) displayEl.innerText = formatTime(secondsElapsed);
+                    if (displayEl) displayEl.innerText = CpeasyUtils.formatTime(secondsElapsed);
                 }
             }, 1000);
         };
@@ -219,21 +123,10 @@ if (problemTitle) {
         timerResetBtn.addEventListener('click', () => {
             secondsElapsed = 0;
             const displayEl = document.getElementById('cpeasy-stopwatch-display');
-            if (displayEl) displayEl.innerText = formatTime(0);
+            if (displayEl) displayEl.innerText = CpeasyUtils.formatTime(0);
         });
 
-        // --- CODE TEMPLATES MAP ---
-        const codeTemplates = {
-            "text/x-c++src": `#include <iostream>\nusing namespace std;\n\nvoid solve() {\n    // Write your solution here\n}\n\nint main() {\n    ios_base::sync_with_stdio(false);\n    cin.tie(NULL);\n    int t = 1;\n    if (cin >> t) {\n        while (t--) {\n            solve();\n        }\n    }\n    return 0;\n}\n`,
-            "text/x-csrc": `#include <stdio.h>\n\nvoid solve() {\n    // Write your solution here\n}\n\nint main() {\n    int t = 1;\n    if (scanf("%d", &t) == 1) {\n        while (t--) {\n            solve();\n        }\n    }\n    return 0;\n}\n`,
-            "text/x-java": `import java.util.Scanner;\n\npublic class Main {\n    public static void solve(Scanner sc) {\n        // Write your solution here\n    }\n\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        if (sc.hasNextInt()) {\n            int t = sc.nextInt();\n            while (t-- > 0) {\n                solve(sc);\n            }\n        }\n        sc.close();\n    }\n}\n`,
-            "text/x-python": `import sys\n\ndef solve():\n    # Write your solution here\n    pass\n\ndef main():\n    input = sys.stdin.read\n    # Write input reading logic here\n\nif __name__ == '__main__':\n    main()\n`,
-            "javascript": `const fs = require('fs');\n\nfunction solve() {\n    const input = fs.readFileSync('/dev/stdin', 'utf-8').trim().split(/\\s+/);\n    if (!input || input.length === 0 || input[0] === '') return;\n    // Write solution logic here\n}\n\nsolve();\n`,
-            "text/x-csharp": `using System;\n\nclass Program {\n    static void Main() {\n        // Write your solution here\n    }\n}\n`,
-            "text/x-rustsrc": `use std::io::{self, Read};\n\nfn main() {\n    let mut input = String::new();\n    io::stdin().read_to_string(&mut input).unwrap();\n    // Write solution logic here\n}\n`,
-            "text/x-go": `package main\n\nimport (\n    "fmt"\n)\n\nfunc main() {\n    var t int\n    if _, err := fmt.Scan(&t); err == nil {\n        for i := 0; i < t; i++ {\n            // Write solution logic here\n        }\n    }\n}\n`
-        };
-
+        // --- EDITOR INITIALIZATION ---
         const targetTextArea = document.getElementById('cpeasy-textarea-editor');
         const langSelect = document.getElementById('cpeasy-lang-select');
         const templateBtn = document.getElementById('cpeasy-template-btn');
@@ -253,7 +146,7 @@ if (problemTitle) {
         if (savedCode && savedCode.trim() !== "") {
             targetTextArea.value = savedCode; 
         } else {
-            targetTextArea.value = codeTemplates[langSelect.value] || "";
+            targetTextArea.value = CPEASY_CONFIG.templates[langSelect.value] || "";
         }
         
         if (targetTextArea && typeof window.CodeMirror !== 'undefined') {
@@ -280,13 +173,13 @@ if (problemTitle) {
                 localStorage.setItem(langKey, selectedLang);
 
                 if (editor.getValue().trim() === "") {
-                    editor.setValue(codeTemplates[selectedLang] || "");
+                    editor.setValue(CPEASY_CONFIG.templates[selectedLang] || "");
                 }
             });
 
             templateBtn.addEventListener('click', () => {
                 const currentLang = langSelect.value;
-                const template = codeTemplates[currentLang];
+                const template = CPEASY_CONFIG.templates[currentLang];
                 
                 if (template) {
                     if (editor.getValue().trim() !== "") {
@@ -299,7 +192,7 @@ if (problemTitle) {
                 }
             });
 
-            // Resizing logic
+            // --- RESIZING LOGIC ---
             const resizerX = document.getElementById('cpeasy-resizer-x');
             const resizerY = document.getElementById('cpeasy-resizer-y');
             const editorWrapper = document.getElementById('cpeasy-editor-wrapper');
@@ -355,44 +248,14 @@ if (problemTitle) {
                 }
             });
 
-            // Formatters & Wandbox Execution
-            const formatErrorLog = (rawError) => {
-                if (!rawError) return "";
-                let cleaned = rawError.replace(/\/tmp\/wandbox-[^\/]+\//g, '');
-                cleaned = cleaned.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-                cleaned = cleaned.replace(/(error:)/gi, '<span style="color: #ef4444; font-weight: bold;">$1</span>');
-                cleaned = cleaned.replace(/(warning:)/gi, '<span style="color: #f59e0b; font-weight: bold;">$1</span>');
-                cleaned = cleaned.replace(/(Segmentation fault|SIGSEGV|SIGFPE|out_of_range|std::bad_alloc)/gi, '<span style="color: #ec4899; font-weight: bold;">💥 $1</span>');
-                return cleaned;
-            };
-
-            const wandboxCompilerMap = {
-                "text/x-c++src": "gcc-head",
-                "text/x-csrc": "gcc-head-c",
-                "text/x-java": "openjdk-head",
-                "text/x-python": "cpython-head",
-                "javascript": "nodejs-head",
-                "text/x-csharp": "dotnetcore-head",
-                "text/x-rustsrc": "rust-head",
-                "text/x-go": "go-head"
-            };
-
-            const extractCleanText = (preElement) => {
-                if (!preElement) return "";
-                const lines = preElement.querySelectorAll('.test-example-line');
-                if (lines.length > 0) {
-                    return Array.from(lines).map(line => line.innerText.trim()).join('\n').trim();
-                }
-                return preElement.innerText.trim();
-            };
-
+            // --- RUN CODE EXECUTION LOGIC ---
             const runBtn = document.getElementById('cpeasy-run-btn');
             const consoleOutput = document.getElementById('cpeasy-console-output');
 
             runBtn.addEventListener('click', async () => {
                 const code = editor.getValue();
                 const selectedMode = langSelect.value;
-                const compilerName = wandboxCompilerMap[selectedMode];
+                const compilerName = CPEASY_CONFIG.wandboxCompilers[selectedMode];
 
                 if (!code || code.trim() === "") {
                     consoleOutput.innerText = "Error: Code box is empty! 😅";
@@ -418,8 +281,8 @@ if (problemTitle) {
 
                     const testCases = [];
                     inputElements.forEach((inputEl, index) => {
-                        const rawInput = extractCleanText(inputEl);
-                        const rawOutput = extractCleanText(outputElements[index]);
+                        const rawInput = CpeasyUtils.extractCleanText(inputEl);
+                        const rawOutput = CpeasyUtils.extractCleanText(outputElements[index]);
                         testCases.push({ input: rawInput, expected: rawOutput, isCustom: false });
                     });
 
@@ -471,7 +334,7 @@ if (problemTitle) {
                                             ${res.error ? `
                                                 <div style="margin-top: 10px;">
                                                     <div style="color: #ef4444; font-size: 12px; margin-bottom: 4px; font-weight: 600;">Error Logs:</div>
-                                                    <div style="background: #281010; border: 1px solid #ef4444; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 12px; color: #f87171; white-space: pre-wrap; overflow-x: auto;">${formatErrorLog(res.error)}</div>
+                                                    <div style="background: #281010; border: 1px solid #ef4444; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 12px; color: #f87171; white-space: pre-wrap; overflow-x: auto;">${CpeasyUtils.formatErrorLog(res.error)}</div>
                                                 </div>
                                             ` : ''}
                                         ` : `<div style="color: #888; font-size: 12px;">Type input above and click 'Run Code' to execute custom testcase.</div>`}
@@ -515,7 +378,7 @@ if (problemTitle) {
                                 ${res.error ? `
                                     <div style="margin-top: 12px;">
                                         <div style="color: #ef4444; font-size: 12px; margin-bottom: 4px; font-weight: 600;">Error Logs:</div>
-                                        <div style="background: #281010; border: 1px solid #ef4444; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 12px; color: #f87171; white-space: pre-wrap; overflow-x: auto;">${formatErrorLog(res.error)}</div>
+                                        <div style="background: #281010; border: 1px solid #ef4444; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 12px; color: #f87171; white-space: pre-wrap; overflow-x: auto;">${CpeasyUtils.formatErrorLog(res.error)}</div>
                                     </div>
                                 ` : ''}
                             `;
@@ -624,60 +487,21 @@ if (problemTitle) {
                 }
             });
 
-            // --- REDIRECT ONLY LOGIC ---
-            const languageMap = {
-                "text/x-c++src": "89",
-                "text/x-csrc": "43",
-                "text/x-java": "87",
-                "text/x-python": "31",
-                "javascript": "34",
-                "text/x-csharp": "65",
-                "text/x-rustsrc": "75",
-                "text/x-go": "32"
-            };
-
-            const getSubmitInfo = () => {
-                const path = window.location.pathname;
-                const parts = path.split('/').filter(Boolean);
-                
-                let submitUrl = "https://codeforces.com/problemset/submit";
-                let problemCode = "";
-
-                if (parts[0] === "problemset" && parts[1] === "problem" && parts[2] && parts[3]) {
-                    submitUrl = "https://codeforces.com/problemset/submit";
-                    problemCode = parts[2] + parts[3].toUpperCase();
-                } else if (parts[0] === "contest" && parts[2] === "problem" && parts[1] && parts[3]) {
-                    submitUrl = `https://codeforces.com/contest/${parts[1]}/submit`;
-                    problemCode = parts[3].toUpperCase();
-                } else if (parts[0] === "gym" && parts[2] === "problem" && parts[1] && parts[3]) {
-                    submitUrl = `https://codeforces.com/gym/${parts[1]}/submit`;
-                    problemCode = parts[3].toUpperCase();
-                } else {
-                    const titleEl = document.querySelector('.problem-statement .header .title');
-                    if (titleEl) {
-                        const match = titleEl.innerText.match(/^([A-Z0-9]+)\./);
-                        if (match) problemCode = match[1];
-                    }
-                }
-
-                return { submitUrl, problemCode };
-            };
-
+            // --- REDIRECT LOGIC ---
             const submitBtn = document.getElementById('cpeasy-submit-btn');
             
             submitBtn.addEventListener('click', () => {
                 const code = editor.getValue();
                 const cmLang = langSelect.value;
-                const cfLangId = languageMap[cmLang];
+                const cfLangId = CPEASY_CONFIG.cfLanguageIds[cmLang];
 
                 if (!code || code.trim() === "") {
                     alert("Please write code before submitting! 😅");
                     return;
                 }
 
-                const { submitUrl, problemCode } = getSubmitInfo();
+                const { submitUrl, problemCode } = CpeasyUtils.getSubmitInfo();
                 
-                // Save details to LocalStorage
                 localStorage.setItem("cpeasy_pending_submit_code", code);
                 localStorage.setItem("cpeasy_pending_submit_lang", cfLangId);
                 localStorage.setItem("cpeasy_pending_submit_problem_code", problemCode);
@@ -686,7 +510,6 @@ if (problemTitle) {
                 submitBtn.style.background = "#eab308";
                 submitBtn.disabled = true;
 
-                // Redirect to submission page only
                 window.location.href = submitUrl;
             });
 
