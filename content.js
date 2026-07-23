@@ -1,5 +1,88 @@
 console.log("🚀 cpeasy: Active DOM Target Initialized!");
 
+// --- AUTO-FILL ON SUBMIT PAGE (NO AUTO-SUBMIT) ---
+(() => {
+    const pendingCode = localStorage.getItem("cpeasy_pending_submit_code");
+    const pendingLang = localStorage.getItem("cpeasy_pending_submit_lang");
+    const pendingProblemCode = localStorage.getItem("cpeasy_pending_submit_problem_code");
+
+    if (pendingCode && window.location.pathname.includes("/submit")) {
+        const autoFillInterval = setInterval(() => {
+            const cfLangSelect = document.querySelector('select[name="programTypeId"]');
+            const cfProblemInput = document.querySelector('input[name="submittedProblemCode"]') || 
+                                   document.querySelector('input[name="submittedProblemIndex"]') ||
+                                   document.querySelector('select[name="submittedProblemIndex"]');
+            const cfSourceTextarea = document.querySelector('textarea[name="source"]') || document.querySelector('#sourceCodeTextarea');
+
+            if (cfLangSelect && cfSourceTextarea) {
+                clearInterval(autoFillInterval);
+
+                const updateCodeInEditors = (src) => {
+                    cfSourceTextarea.value = src;
+                    cfSourceTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+                    cfSourceTextarea.dispatchEvent(new Event('change', { bubbles: true }));
+
+                    if (window.ace) {
+                        try {
+                            const aceEditor = window.ace.edit("editor");
+                            if (aceEditor) aceEditor.setValue(src, -1);
+                        } catch(e) {}
+                    }
+
+                    const cmEl = document.querySelector('.CodeMirror');
+                    if (cmEl && cmEl.CodeMirror) {
+                        try { cmEl.CodeMirror.setValue(src); } catch(e) {}
+                    }
+                };
+
+                // 1. Fill Language
+                if (pendingLang) {
+                    cfLangSelect.value = pendingLang;
+                    cfLangSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+
+                // 2. Fill Problem Code / Index
+                if (cfProblemInput && pendingProblemCode) {
+                    cfProblemInput.value = pendingProblemCode;
+                    cfProblemInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    cfProblemInput.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+
+                // 3. Fill Source Code
+                updateCodeInEditors(pendingCode);
+
+                // Clean pending storage after filling
+                localStorage.removeItem("cpeasy_pending_submit_code");
+                localStorage.removeItem("cpeasy_pending_submit_lang");
+                localStorage.removeItem("cpeasy_pending_submit_problem_code");
+            }
+        }, 150);
+    }
+})();
+
+// --- INJECT DYNAMIC CSS ---
+const styleTag = document.createElement('style');
+styleTag.id = 'cpeasy-custom-styles';
+styleTag.innerHTML = `
+    .CodeMirror {
+        height: 100% !important;
+        font-family: monospace !important;
+        font-size: 13px !important;
+    }
+    .CodeMirror-gutters {
+        background-color: #1a1a1a !important;
+        border-right: 1px solid #333 !important;
+    }
+    #cpeasy-editor-wrapper {
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
+    }
+`;
+if (!document.getElementById('cpeasy-custom-styles')) {
+    document.head.appendChild(styleTag);
+}
+
 const problemTitle = document.querySelector('.problem-statement .header .title');
 
 if (problemTitle) {
@@ -14,14 +97,12 @@ if (problemTitle) {
 
         const body = document.body;
         
-        // Clean Flexbox setup for the whole page
         body.style.setProperty('display', 'flex', 'important');
         body.style.setProperty('width', '100vw', 'important');
         body.style.setProperty('height', '100vh', 'important');
         body.style.setProperty('overflow', 'hidden', 'important');
         body.style.setProperty('margin', '0', 'important');
 
-        // Codeforces main wrapper
         const mainContent = document.querySelector('#body') || document.querySelector('#pageContent') || body.children[0];
         
         if (mainContent) {
@@ -47,7 +128,6 @@ if (problemTitle) {
             z-index: 9999;
         `;
 
-        // Main IDE HTML
         rightPane.innerHTML = `
             <div id="cpeasy-resizer-x" style="position: absolute; top: 0; left: -4px; width: 8px; height: 100%; cursor: col-resize; z-index: 999999; background: transparent; transition: background 0.2s;" onmouseover="this.style.background='#3b82f6'" onmouseout="this.style.background='transparent'"></div>
             
@@ -67,7 +147,6 @@ if (problemTitle) {
                         <button id="cpeasy-template-btn" style="background: #4b5563; color: white; border: none; padding: 6px 10px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 12px;" title="Insert boilerplate code template">📋 Template</button>
                     </div>
 
-                    <!-- ENHANCED STOPWATCH HEADER SECTION -->
                     <div style="display: flex; align-items: center; gap: 8px; background: #1e1e1e; padding: 4px 10px; border-radius: 8px; border: 1px solid #333; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">
                         <span id="cpeasy-stopwatch-display" style="font-family: monospace; font-size: 15px; font-weight: bold; color: #3b82f6; letter-spacing: 0.5px;">⏱️ 00:00</span>
                         <button id="cpeasy-timer-toggle" style="background: #2d2d2d; color: #e5e5e5; border: 1px solid #444; border-radius: 5px; cursor: pointer; font-size: 14px; padding: 3px 8px; transition: all 0.2s;" onmouseover="this.style.background='#3d3d3d'" onmouseout="this.style.background='#2d2d2d'" title="Play/Pause Stopwatch">⏸️</button>
@@ -80,19 +159,19 @@ if (problemTitle) {
                     </div>
                 </div>
                 
-                <div id="cpeasy-editor-wrapper" style="height: 50%; flex-basis: 50%; flex-shrink: 0; position: relative;">
+                <div id="cpeasy-editor-wrapper" style="height: 55%; flex-basis: 55%; min-height: 100px; flex-shrink: 0; position: relative;">
                     <textarea id="cpeasy-textarea-editor" placeholder="// Write your code here..." style="display: none;"></textarea>
                 </div>
                 
                 <div id="cpeasy-resizer-y" style="height: 8px; background: #333; cursor: row-resize; margin: 4px 0; border-radius: 4px; flex-shrink: 0; transition: background 0.2s;" onmouseover="this.style.background='#555'" onmouseout="this.style.background='#333'"></div>
                 
-                <div id="cpeasy-console-wrapper" style="flex: 1; min-height: 120px; background: #1e1e1e; border: 1px solid #444; border-radius: 6px; padding: 10px; overflow-y: auto; display: flex; flex-direction: column;">
+                <div id="cpeasy-console-wrapper" style="flex: 1; min-height: 100px; background: #1e1e1e; border: 1px solid #444; border-radius: 6px; padding: 10px; overflow-y: auto; display: flex; flex-direction: column;">
                     <div style="font-weight: bold; color: #888; margin-bottom: 6px; border-bottom: 1px solid #333; padding-bottom: 4px; flex-shrink: 0;">Console Output:</div>
                     <div id="cpeasy-console-output" style="white-space: pre-wrap; flex: 1; overflow-y: auto; color: #d4d4d4; font-family: monospace; font-size: 12px;">Click 'Run Code' to test against sample testcases...</div>
                 </div>
 
                 <div style="margin-top: 10px; flex-shrink: 0;">
-                    <button id="cpeasy-submit-btn" style="background: #22c55e; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%;">Submit to Codeforces</button>
+                    <button id="cpeasy-submit-btn" style="background: #22c55e; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%;">Go to Submit Page 🚀</button>
                 </div>
             </div>
         `;
@@ -155,7 +234,6 @@ if (problemTitle) {
             "text/x-go": `package main\n\nimport (\n    "fmt"\n)\n\nfunc main() {\n    var t int\n    if _, err := fmt.Scan(&t); err == nil {\n        for i := 0; i < t; i++ {\n            // Write solution logic here\n        }\n    }\n}\n`
         };
 
-        // --- CORE INITIALIZATION ---
         const targetTextArea = document.getElementById('cpeasy-textarea-editor');
         const langSelect = document.getElementById('cpeasy-lang-select');
         const templateBtn = document.getElementById('cpeasy-template-btn');
@@ -221,7 +299,7 @@ if (problemTitle) {
                 }
             });
 
-            // --- RESIZING LOGIC ---
+            // Resizing logic
             const resizerX = document.getElementById('cpeasy-resizer-x');
             const resizerY = document.getElementById('cpeasy-resizer-y');
             const editorWrapper = document.getElementById('cpeasy-editor-wrapper');
@@ -250,11 +328,16 @@ if (problemTitle) {
                 }
                 
                 if (isResizingY) {
-                    const newHeight = e.clientY - 50; 
-                    if (newHeight > 100 && newHeight < window.innerHeight - 200) {
+                    const paneRect = rightPane.getBoundingClientRect();
+                    const newHeight = e.clientY - paneRect.top - 45; 
+                    
+                    if (newHeight > 80 && newHeight < paneRect.height - 180) {
                         editorWrapper.style.height = newHeight + 'px';
                         editorWrapper.style.flexBasis = newHeight + 'px';
-                        if (window.cpeasyEditor) window.cpeasyEditor.refresh(); 
+                        if (window.cpeasyEditor) {
+                            window.cpeasyEditor.setSize("100%", "100%");
+                            window.cpeasyEditor.refresh(); 
+                        }
                     }
                 }
             });
@@ -265,11 +348,14 @@ if (problemTitle) {
                     isResizingY = false;
                     document.body.style.cursor = 'default';
                     document.body.style.userSelect = 'auto';
-                    if (window.cpeasyEditor) window.cpeasyEditor.refresh();
+                    if (window.cpeasyEditor) {
+                        window.cpeasyEditor.setSize("100%", "100%");
+                        window.cpeasyEditor.refresh();
+                    }
                 }
             });
 
-            // --- ERROR LOG FORMATTER HELPER ---
+            // Formatters & Wandbox Execution
             const formatErrorLog = (rawError) => {
                 if (!rawError) return "";
                 let cleaned = rawError.replace(/\/tmp\/wandbox-[^\/]+\//g, '');
@@ -280,7 +366,6 @@ if (problemTitle) {
                 return cleaned;
             };
 
-            // --- WANDBOX COMPILER MAPPING ---
             const wandboxCompilerMap = {
                 "text/x-c++src": "gcc-head",
                 "text/x-csrc": "gcc-head-c",
@@ -328,7 +413,6 @@ if (problemTitle) {
                 runBtn.style.background = "#64748b";
 
                 try {
-                    // 1. Scrape Sample Test Cases
                     const inputElements = document.querySelectorAll('.sample-test .input pre');
                     const outputElements = document.querySelectorAll('.sample-test .output pre');
 
@@ -341,7 +425,6 @@ if (problemTitle) {
 
                     testCases.push({ input: activeCustomInput, expected: "", isCustom: true });
 
-                    // 2. Setup UI Tabs
                     consoleOutput.innerHTML = `
                         <div id="cpeasy-test-tabs" style="display: flex; gap: 8px; margin-bottom: 12px; border-bottom: 1px solid #333; padding-bottom: 8px; overflow-x: auto;"></div>
                         <div id="cpeasy-test-content"></div>
@@ -446,7 +529,6 @@ if (problemTitle) {
                         tabsContainer.children[targetTabToSelect].click();
                     }
 
-                    // 3. Execute Code against Wandbox API
                     for (let i = 0; i < testCases.length; i++) {
                         const tc = testCases[i];
                         const tabBtn = document.getElementById(`cpeasy-tab-${i}`);
@@ -542,9 +624,43 @@ if (problemTitle) {
                 }
             });
 
-            // --- AUTO-SUBMIT LOGIC ---
+            // --- REDIRECT ONLY LOGIC ---
             const languageMap = {
-                "text/x-c++src": "89", "text/x-csrc": "43", "text/x-java": "87", "text/x-python": "31", "javascript": "34", "text/x-csharp": "65", "text/x-rustsrc": "75", "text/x-go": "32"
+                "text/x-c++src": "89",
+                "text/x-csrc": "43",
+                "text/x-java": "87",
+                "text/x-python": "31",
+                "javascript": "34",
+                "text/x-csharp": "65",
+                "text/x-rustsrc": "75",
+                "text/x-go": "32"
+            };
+
+            const getSubmitInfo = () => {
+                const path = window.location.pathname;
+                const parts = path.split('/').filter(Boolean);
+                
+                let submitUrl = "https://codeforces.com/problemset/submit";
+                let problemCode = "";
+
+                if (parts[0] === "problemset" && parts[1] === "problem" && parts[2] && parts[3]) {
+                    submitUrl = "https://codeforces.com/problemset/submit";
+                    problemCode = parts[2] + parts[3].toUpperCase();
+                } else if (parts[0] === "contest" && parts[2] === "problem" && parts[1] && parts[3]) {
+                    submitUrl = `https://codeforces.com/contest/${parts[1]}/submit`;
+                    problemCode = parts[3].toUpperCase();
+                } else if (parts[0] === "gym" && parts[2] === "problem" && parts[1] && parts[3]) {
+                    submitUrl = `https://codeforces.com/gym/${parts[1]}/submit`;
+                    problemCode = parts[3].toUpperCase();
+                } else {
+                    const titleEl = document.querySelector('.problem-statement .header .title');
+                    if (titleEl) {
+                        const match = titleEl.innerText.match(/^([A-Z0-9]+)\./);
+                        if (match) problemCode = match[1];
+                    }
+                }
+
+                return { submitUrl, problemCode };
             };
 
             const submitBtn = document.getElementById('cpeasy-submit-btn');
@@ -559,25 +675,19 @@ if (problemTitle) {
                     return;
                 }
 
-                const cfForm = document.querySelector('form.submit-form');
-                const cfLangSelect = document.querySelector('select[name="programTypeId"]');
-                const cfSourceTextarea = document.querySelector('textarea[name="source"]');
-                const cfSubmitButton = document.querySelector('.submit-form input[type="submit"]');
+                const { submitUrl, problemCode } = getSubmitInfo();
+                
+                // Save details to LocalStorage
+                localStorage.setItem("cpeasy_pending_submit_code", code);
+                localStorage.setItem("cpeasy_pending_submit_lang", cfLangId);
+                localStorage.setItem("cpeasy_pending_submit_problem_code", problemCode);
 
-                if (cfForm && cfLangSelect && cfSourceTextarea && cfSubmitButton) {
-                    cfLangSelect.value = cfLangId;
-                    cfSourceTextarea.value = code;
+                submitBtn.innerText = "Redirecting... 🚀";
+                submitBtn.style.background = "#eab308";
+                submitBtn.disabled = true;
 
-                    localStorage.removeItem(problemKey);
-
-                    submitBtn.innerText = "Submitting... 🚀";
-                    submitBtn.style.background = "#eab308";
-                    submitBtn.disabled = true;
-
-                    cfSubmitButton.click();
-                } else {
-                    alert("❌ Submit form not found! Make sure you are logged into Codeforces.");
-                }
+                // Redirect to submission page only
+                window.location.href = submitUrl;
             });
 
         } else {
