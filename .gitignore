@@ -1,0 +1,7 @@
+.DS_Store
+Thumbs.db
+.vscode/
+node_modules/
+project_full_code.txt
+*.zip
+*.crx

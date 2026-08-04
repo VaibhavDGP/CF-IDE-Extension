@@ -1,0 +1,65 @@
+{
+  "manifest_version": 3,
+  "name": "cpeasy",
+  "version": "1.0",
+  "description": "Adds a LeetCode-style IDE to Codeforces problem pages with sample testing and submission autofill.",
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  },
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_icon": "icon.png"
+  },
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "*://codeforces.com/*",
+    "*://*.codeforces.com/*",
+    "https://ce.judge0.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://codeforces.com/*",
+        "*://*.codeforces.com/*"
+      ],
+      "css": [
+        "src/styles/cpeasy.css",
+        "vendor/codemirror/codemirror.min.css",
+        "vendor/codemirror/material.min.css"
+      ],
+      "js": [
+        "vendor/codemirror/codemirror.min.js",
+        "vendor/codemirror/clike.min.js",
+        "vendor/codemirror/python.min.js",
+        "vendor/codemirror/javascript.js",
+        "vendor/codemirror/rust.js",
+        "vendor/codemirror/go.js",
+        "src/content/config.js",
+        "src/content/utils.js",
+        "src/content/ide.js"
+      ]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "src/**/*.js",
+        "src/**/*.css",
+        "vendor/**/*.js",
+        "vendor/**/*.css",
+        "vendor/**/*.wasm"
+      ],
+      "matches": [
+        "https://codeforces.com/*"
+      ]
+    }
+  ]
+}
