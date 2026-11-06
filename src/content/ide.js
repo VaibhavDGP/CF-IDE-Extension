@@ -14,14 +14,46 @@ const ICONS = {
 
 (() => {
     if (window.location.href.includes('/submit')) {
-        const pendingCode = localStorage.getItem("cpeasy_pending_submit_code");
-        const pendingLang = localStorage.getItem("cpeasy_pending_submit_lang");
-        let pendingLangLabels = [];
-        try {
-            pendingLangLabels = JSON.parse(localStorage.getItem("cpeasy_pending_submit_lang_labels") || "[]");
-        } catch (err) {
-            pendingLangLabels = [];
+       let handoff = null;
+
+try {
+    const key = "cpeasy_submission_handoff";
+    const raw = sessionStorage.getItem(key);
+
+    if (raw) {
+        const candidate = JSON.parse(raw);
+        const currentPath = window.location.pathname.replace(/\/$/, "");
+        const age = Date.now() - candidate.createdAt;
+
+        const valid =
+            typeof candidate.code === "string" &&
+            candidate.code.trim().length > 0 &&
+            typeof candidate.language === "string" &&
+            candidate.language.length > 0 &&
+            typeof candidate.problem === "string" &&
+            candidate.problem.length > 0 &&
+            Number.isFinite(candidate.createdAt) &&
+            age >= 0 &&
+            age <= 10 * 60 * 1000 &&
+            candidate.targetPath === currentPath;
+
+        // Consume before autofill begins. The saved solution draft remains.
+        sessionStorage.removeItem(key);
+
+        if (valid) {
+            handoff = candidate;
         }
+    }
+} catch (error) {
+    console.warn("cpeasy: Could not read submission handoff:", error);
+}
+
+const pendingCode = handoff?.code;
+const pendingLang = handoff?.language;
+const pendingLangLabels = Array.isArray(handoff?.languageLabels)
+    ? handoff.languageLabels
+    : [];
+const pendingProblem = handoff?.problem;
         const pendingProblem = localStorage.getItem("cpeasy_pending_submit_problem_code");
 
         if (pendingCode) {
@@ -165,8 +197,8 @@ const sourceFilled =
     editorSynced && sourceTextarea.value === pendingCode;
 const languageFilled = Boolean(langSelect.value);
 
-// Retain the pending submission as a recovery copy.
-// A later click on "Go to Codeforces Submit" overwrites these values.
+// The temporary handoff was consumed when this page loaded.
+// The solution remains saved independently in extension storage.
 if (sourceFilled && languageFilled && problemFilled) {
     clearInterval(fillTimer);
 } else if (fillAttempts >= maxFillAttempts) {
@@ -613,6 +645,15 @@ if (resetTemplateBtn) {
     }
 });
 
+const initialPlan = buildRunPlan(
+    localStorage.getItem(customInputKey) || ""
+);
+
+latestCases = initialPlan.displayCases;
+latestResults = new Array(latestCases.length).fill(null);
+
+renderTestInterface(latestCases, latestResults);
+
     setupResizers({ rightPane, editor });
     runBtn.addEventListener('click', () => runCode());
     submitBtn.addEventListener('click', () => submitToCodeforces());
@@ -658,13 +699,36 @@ if (resetTemplateBtn) {
         latestCases = displayCases;
         latestResults = new Array(displayCases.length).fill(null);
 
-        if (!latestCases.some(tc => !tc.isCustom)) {
-            renderNotice("No sample tests were found on this page. Use Custom Input below.", "warning");
-        }
+        // Mark skipped custom tests explicitly.
+latestCases.forEach((testCase, index) => {
+    if (testCase.isCustom && testCase.input.length === 0) {
+        latestResults[index] = {
+            status: "Not run — enter custom input",
+            verdict: "custom",
+            actual: "",
+            error: ""
+        };
+    }
+});
 
+renderTestInterface(latestCases, latestResults);
+
+if (runUnits.length === 0) {
+    setRunTiming("No samples found. Enter custom input, then click Run.");
+
+    const customIndex = latestCases.findIndex(testCase => testCase.isCustom);
+
+    if (customIndex >= 0) {
+        activeTabIndex = customIndex;
         renderTestInterface(latestCases, latestResults);
-        setRunTiming("Running...");
-        setRunButtonState(true);
+        document.getElementById("cpeasy-custom-textarea")?.focus();
+    }
+
+    return;
+}
+
+setRunTiming("Running...");
+setRunButtonState(true);
 
         const runStart = performance.now();
         let completedCalls = 0;
@@ -777,36 +841,65 @@ if (resetTemplateBtn) {
     }
 
     async function submitToCodeforces() {
-        const code = editor.getValue();
-        const cmLang = langSelect.value;
-        const cfLangId = CPEASY_CONFIG.cfLanguageIds[cmLang];
-        const cfLangLabels = CPEASY_CONFIG.cfLanguageLabels[cmLang] || [];
+    const code = editor.getValue();
+    const cmLang = langSelect.value;
+    const cfLangId = CPEASY_CONFIG.cfLanguageIds[cmLang];
+    const cfLangLabels = CPEASY_CONFIG.cfLanguageLabels[cmLang] || [];
 
-        if (!code.trim()) {
-            alert("Please write code before submitting.");
-            return;
-        }
+    if (!code.trim()) {
+        window.alert("Please write code before submitting.");
+        return;
+    }
 
-        try {
-    await saveDraft(cmLang, code);
-} catch {
-    window.alert(
-        "Your solution could not be saved. Please copy it somewhere safe " +
-        "before leaving this page."
-    );
-    return;
-}
+    if (!cfLangId) {
+        window.alert("No Codeforces language is configured for this selection.");
+        return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.innerText = "Preparing submission...";
+
+    try {
+        await saveDraft(cmLang, code);
 
         const { submitUrl, problemCode } = CpeasyUtils.getSubmitInfo();
-        localStorage.setItem("cpeasy_pending_submit_code", code);
-        localStorage.setItem("cpeasy_pending_submit_lang", cfLangId);
-        localStorage.setItem("cpeasy_pending_submit_lang_labels", JSON.stringify(cfLangLabels));
-        localStorage.setItem("cpeasy_pending_submit_problem_code", problemCode);
 
-        submitBtn.innerText = "Opening submit page...";
-        submitBtn.disabled = true;
-        window.location.href = submitUrl;
+        if (!problemCode) {
+            throw new Error("Could not identify the current problem.");
+        }
+
+        // Keep navigation on the same origin so sessionStorage stays available.
+        const destination = new URL(submitUrl);
+        destination.protocol = window.location.protocol;
+        destination.host = window.location.host;
+
+        const handoff = {
+            code,
+            language: String(cfLangId),
+            languageLabels: cfLangLabels,
+            problem: problemCode,
+            targetPath: destination.pathname.replace(/\/$/, ""),
+            createdAt: Date.now()
+        };
+
+        sessionStorage.setItem(
+            "cpeasy_submission_handoff",
+            JSON.stringify(handoff)
+        );
+
+        window.location.assign(destination.href);
+    } catch (error) {
+        console.error("cpeasy: Could not prepare submission:", error);
+
+        window.alert(
+            "Could not prepare the submission. Your code is still in the editor.\n\n" +
+            error.message
+        );
+
+        submitBtn.disabled = false;
+        submitBtn.innerText = "Go to Codeforces Submit";
     }
+}
 
     function renderNotice(message, tone) {
         consoleOutput.innerHTML = `
@@ -864,11 +957,15 @@ if (resetTemplateBtn) {
         isCustom: true
     });
 
+    // Keep the Custom tab visible, but only execute it when input was entered.
+// Whitespace-only input is preserved because it may be intentional.
+if (customInput.length > 0) {
     runUnits.push({
         type: 'single',
         stdin: customInput,
         displayIndex: customDisplayIndex
     });
+}
 
     return { runUnits, displayCases };
 }
@@ -956,7 +1053,9 @@ if (resetTemplateBtn) {
                 </div>
                 ${result.error ? renderErrorBlock(result.error) : ''}
             ` : `
-                <div class="cpeasy-muted-note">Run again to execute this custom input.</div>
+                <div class="cpeasy-muted-note">
+    Enter input, then click Run. Empty custom input is skipped.
+</div>
             `}
         `;
     }
