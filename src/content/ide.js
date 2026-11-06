@@ -743,13 +743,14 @@ latestResults = new Array(latestCases.length).fill(null);
 
 renderTestInterface(latestCases, latestResults);
 
-    setupResizers({ rightPane, editor });
+    const cleanupResizers = setupResizers({ rightPane, editor });
     runBtn.addEventListener('click', () => runCode());
     submitBtn.addEventListener('click', () => submitToCodeforces());
 
-    document.getElementById('close-cpeasy-ide').addEventListener('click', () => {
-        if (stopwatchInterval) clearInterval(stopwatchInterval);
-        rightPane.remove();
+document.getElementById('close-cpeasy-ide').addEventListener('click', () => {
+    if (stopwatchInterval) clearInterval(stopwatchInterval);
+    cleanupResizers();
+    rightPane.remove();
         body.classList.remove('cpeasy-split-body');
         body.style.display = '';
         body.style.width = '';
@@ -1391,77 +1392,129 @@ The top Run button executes samples and any nonempty custom input.
 }
 
 function setupResizers({ rightPane, editor }) {
-    const resizerX = document.getElementById('cpeasy-resizer-x');
-    const resizerY = document.getElementById('cpeasy-resizer-y');
-    const editorWrapper = document.getElementById('cpeasy-editor-wrapper');
-    const workspace = rightPane.querySelector('.cpeasy-workspace');
+    const resizerX = rightPane.querySelector("#cpeasy-resizer-x");
+    const resizerY = rightPane.querySelector("#cpeasy-resizer-y");
+    const editorWrapper = rightPane.querySelector("#cpeasy-editor-wrapper");
+    const workspace = rightPane.querySelector(".cpeasy-workspace");
 
-    let isResizingX = false;
-    let isResizingY = false;
+    const controller = new AbortController();
+    const options = { signal: controller.signal };
+
+    let direction = null;
     let rafId = null;
-    let pendingEvent = null;
+    let pendingPosition = null;
+    let savedCursor = "";
+    let savedUserSelect = "";
 
-    resizerX.addEventListener('mousedown', () => {
-        isResizingX = true;
-        document.body.style.cursor = 'col-resize';
-        document.body.style.userSelect = 'none';
-    });
+    function startResize(event, axis) {
+        if (event.button !== 0 || direction !== null) return;
 
-    resizerY.addEventListener('mousedown', () => {
-        isResizingY = true;
-        document.body.style.cursor = 'row-resize';
-        document.body.style.userSelect = 'none';
-    });
+        event.preventDefault();
+        direction = axis;
 
-    function applyPendingResize() {
-        rafId = null;
-        const event = pendingEvent;
-        if (!event) return;
+        savedCursor = document.body.style.cursor;
+        savedUserSelect = document.body.style.userSelect;
 
-        if (isResizingX) {
-            const screenWidth = window.innerWidth;
-            let targetWidth = screenWidth - event.clientX;
-            targetWidth = Math.max(420, Math.min(targetWidth, screenWidth * 0.62));
-            rightPane.style.setProperty('width', `${targetWidth}px`, 'important');
-        }
-
-        if (isResizingY) {
-            const editorTop = editorWrapper.getBoundingClientRect().top;
-            const workspaceHeight = workspace.getBoundingClientRect().height;
-            const newHeight = event.clientY - editorTop;
-            const minEditor = 80;
-            const minConsole = 80;
-
-            if (newHeight > minEditor && newHeight < workspaceHeight - minConsole) {
-                editorWrapper.style.setProperty('flex-basis', `${newHeight}px`, 'important');
-                editor.setSize("100%", "100%");
-            }
-        }
+        document.body.style.cursor =
+            axis === "x" ? "col-resize" : "row-resize";
+        document.body.style.userSelect = "none";
     }
 
-    document.addEventListener('mousemove', (event) => {
-        if (!isResizingX && !isResizingY) return;
-        pendingEvent = event;
-        if (rafId === null) {
-            rafId = requestAnimationFrame(applyPendingResize);
-        }
-    });
+    function applyResize() {
+        rafId = null;
 
-    document.addEventListener('mouseup', () => {
-        if (!isResizingX && !isResizingY) return;
-        isResizingX = false;
-        isResizingY = false;
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
+        if (!direction || !pendingPosition || !rightPane.isConnected) {
+            return;
+        }
+
+        if (direction === "x") {
+            const screenWidth = window.innerWidth;
+            const maximum = screenWidth * 0.62;
+            const minimum = Math.min(420, maximum);
+
+            const width = Math.max(
+                minimum,
+                Math.min(screenWidth - pendingPosition.x, maximum)
+            );
+
+            rightPane.style.setProperty("width", `${width}px`, "important");
+        } else {
+            const top = editorWrapper.getBoundingClientRect().top;
+            const availableHeight = workspace.getBoundingClientRect().height;
+            const height = pendingPosition.y - top;
+
+            if (height > 80 && height < availableHeight - 80) {
+                editorWrapper.style.setProperty(
+                    "flex-basis",
+                    `${height}px`,
+                    "important"
+                );
+            }
+        }
+
+        editor.setSize("100%", "100%");
+    }
+
+    function stopResize() {
+        if (rafId !== null) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+        }
+
+        if (direction !== null) {
+            document.body.style.cursor = savedCursor;
+            document.body.style.userSelect = savedUserSelect;
+        }
+
+        direction = null;
+        pendingPosition = null;
+    }
+
+    resizerX.addEventListener(
+        "mousedown",
+        event => startResize(event, "x"),
+        options
+    );
+
+    resizerY.addEventListener(
+        "mousedown",
+        event => startResize(event, "y"),
+        options
+    );
+
+    document.addEventListener("mousemove", event => {
+        if (!direction) return;
+
+        pendingPosition = { x: event.clientX, y: event.clientY };
+
+        if (rafId === null) {
+            rafId = requestAnimationFrame(applyResize);
+        }
+    }, options);
+
+    document.addEventListener("mouseup", () => {
+        if (!direction) return;
 
         if (rafId !== null) {
             cancelAnimationFrame(rafId);
             rafId = null;
         }
 
-        editor.setSize("100%", "100%");
-        editor.refresh();
-    });
+        applyResize();
+        stopResize();
+
+        if (rightPane.isConnected) {
+            editor.refresh();
+        }
+    }, options);
+
+    // Restore normal selection if the browser loses focus during a drag.
+    window.addEventListener("blur", stopResize, options);
+
+    return function cleanupResizers() {
+        controller.abort();
+        stopResize();
+    };
 }
 
 function executeOnJudge0({ compilerName, code, stdin }) {
