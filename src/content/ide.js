@@ -1148,7 +1148,11 @@ setRunButtonState(true);
             if (unit.type === 'batch') {
                 distributeBatchResult(unit, response);
             } else {
-                latestResults[unit.displayIndex] = normalizeRunResult(response, latestCases[unit.displayIndex]);
+                latestResults[unit.displayIndex] = {
+    ...normalizeRunResult(response, latestCases[unit.displayIndex]),
+    executionTimeSeconds: response?.time,
+    memoryKilobytes: response?.memory
+};
             }
         } catch (apiError) {
             const failResult = {
@@ -1502,6 +1506,56 @@ customRunBtn.addEventListener("click", runCustomCode);
     `;
 }
 
+    function renderExecutionStats(result) {
+    if (!result) return "";
+
+    const readMeasurement = value => {
+        if (
+            value === null ||
+            value === undefined ||
+            (typeof value !== "number" && typeof value !== "string") ||
+            (typeof value === "string" && value.trim() === "")
+        ) {
+            return null;
+        }
+
+        const number = Number(value);
+
+        return Number.isFinite(number) && number >= 0
+            ? number
+            : null;
+    };
+
+    const seconds = readMeasurement(result.executionTimeSeconds);
+    const kilobytes = readMeasurement(result.memoryKilobytes);
+
+    // Don't show invented zeroes when the service provides no measurements.
+    if (seconds === null && kilobytes === null) {
+        return "";
+    }
+
+    const runtimeText = seconds === null
+        ? "Not reported"
+        : `${(seconds * 1000).toFixed(1)} ms`;
+
+    const memoryText = kilobytes === null
+        ? "Not reported"
+        : `${kilobytes.toLocaleString("en-US", {
+            maximumFractionDigits: 1
+        })} KB`;
+
+    return `
+        <div
+            class="cpeasy-execution-stats"
+            style="display:flex;gap:16px;flex-wrap:wrap;margin:8px 0 12px;font-size:12px;color:#9aa6b2;"
+            title="Reported by Judge0. These are not Codeforces judge measurements."
+        >
+            <span>Judge0 runtime: <strong>${runtimeText}</strong></span>
+            <span>Memory: <strong>${memoryText}</strong></span>
+        </div>
+    `;
+}
+
     function renderSampleCase(tc, result) {
     const verdictClass = result ? `is-${result.verdict}` : "";
 
@@ -1514,6 +1568,11 @@ customRunBtn.addEventListener("click", runCustomCode);
                 result ? result.status : "Waiting to run"
             )}</span>
         </div>
+
+            ${renderExecutionStats(result)}
+
+<div class="cpeasy-io-grid">
+    ${renderDataBlock("Input", tc.input)}
 
         <div class="cpeasy-io-grid">
             ${renderDataBlock("Input", tc.input)}
@@ -1545,6 +1604,12 @@ customRunBtn.addEventListener("click", runCustomCode);
                     <span class="cpeasy-verdict-icon">${verdictIcon(result.verdict)}</span>
                     <span>${CpeasyUtils.escapeHtml(result.status)}</span>
                 </div>
+
+                ${renderExecutionStats(result)}
+
+<div class="cpeasy-io-grid">
+    ${renderDataBlock("Your Output", result.actual || "No output")}
+
                 <div class="cpeasy-io-grid">
                     ${renderDataBlock("Your Output", result.actual || "No output")}
                 </div>
@@ -1600,6 +1665,99 @@ function setupResizers({ rightPane, editor }) {
     let pendingPosition = null;
     let savedCursor = "";
     let savedUserSelect = "";
+
+    const layoutKey = "cpeasy_panel_layout";
+let savedLayout = {};
+
+try {
+    const raw = sessionStorage.getItem(layoutKey);
+    const parsed = raw ? JSON.parse(raw) : null;
+
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        savedLayout = parsed;
+    }
+} catch (error) {
+    console.warn("cpeasy: Could not load panel sizes:", error);
+}
+
+function restoreLayout() {
+    if (!rightPane.isConnected) return;
+
+    const viewportWidth = window.innerWidth;
+    const widthRatio = savedLayout.widthRatio;
+
+    // Preserve the existing full-width layout on smaller screens.
+    if (viewportWidth <= 980) {
+        rightPane.style.removeProperty("width");
+    } else if (
+        Number.isFinite(widthRatio) &&
+        widthRatio > 0 &&
+        widthRatio <= 1
+    ) {
+        const width = Math.max(
+            420,
+            Math.min(viewportWidth * widthRatio, viewportWidth * 0.62)
+        );
+
+        rightPane.style.setProperty("width", `${width}px`, "important");
+    }
+
+    const workspaceHeight = workspace.getBoundingClientRect().height;
+    const editorRatio = savedLayout.editorRatio;
+
+    if (
+        workspaceHeight > 160 &&
+        Number.isFinite(editorRatio) &&
+        editorRatio > 0 &&
+        editorRatio < 1
+    ) {
+        const height = Math.max(
+            80,
+            Math.min(workspaceHeight * editorRatio, workspaceHeight - 80)
+        );
+
+        editorWrapper.style.setProperty(
+            "flex-basis",
+            `${height}px`,
+            "important"
+        );
+    }
+
+    editor.setSize("100%", "100%");
+    editor.refresh();
+}
+
+function saveLayout(axis) {
+    if (!rightPane.isConnected) return;
+
+    if (axis === "x" && window.innerWidth > 980) {
+        savedLayout.widthRatio =
+            rightPane.getBoundingClientRect().width / window.innerWidth;
+    }
+
+    if (axis === "y") {
+        const workspaceHeight = workspace.getBoundingClientRect().height;
+
+        if (workspaceHeight > 0) {
+            savedLayout.editorRatio =
+                editorWrapper.getBoundingClientRect().height / workspaceHeight;
+        }
+    }
+
+    try {
+        sessionStorage.setItem(layoutKey, JSON.stringify(savedLayout));
+    } catch (error) {
+        console.warn("cpeasy: Could not save panel sizes:", error);
+    }
+}
+
+restoreLayout();
+
+window.addEventListener("resize", () => {
+    if (direction === null) {
+        restoreLayout();
+    }
+}, options);
 
     function startResize(event, axis) {
         if (event.button !== 0 || direction !== null) return;
@@ -1657,9 +1815,11 @@ function setupResizers({ rightPane, editor }) {
         }
 
         if (direction !== null) {
-            document.body.style.cursor = savedCursor;
-            document.body.style.userSelect = savedUserSelect;
-        }
+    saveLayout(direction);
+
+    document.body.style.cursor = savedCursor;
+    document.body.style.userSelect = savedUserSelect;
+}
 
         direction = null;
         pendingPosition = null;
