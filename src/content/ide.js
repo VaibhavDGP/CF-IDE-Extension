@@ -349,8 +349,7 @@ function openCpeasyIde(actionBtn) {
 
 async function initializeCpeasyIde({ rightPane, body, mainContent, actionBtn }) {
     let stopwatchInterval = null;
-    let secondsElapsed = 0;
-    let isTimerRunning = true;
+    
     let activeTabIndex = 0;
     let previousMode = null;
     let latestCases = [];
@@ -561,30 +560,120 @@ if (resetTemplateBtn) {
     updateRestoreButton();
 }
 
-    const startStopwatch = () => {
-        if (stopwatchInterval) clearInterval(stopwatchInterval);
-        stopwatchInterval = setInterval(() => {
-            if (!isTimerRunning) return;
-            secondsElapsed++;
-            const displayEl = document.getElementById('cpeasy-stopwatch-display');
-            if (displayEl) displayEl.innerText = CpeasyUtils.formatTime(secondsElapsed);
-        }, 1000);
+    const timerKey =
+    "cpeasy_timer_" + window.location.pathname.replace(/\/$/, "");
+
+let timerState = {
+    elapsedMs: 0,
+    startedAt: Date.now()
+};
+
+// Restore this problem's timer from the current tab.
+try {
+    const raw = sessionStorage.getItem(timerKey);
+
+    if (raw) {
+        const saved = JSON.parse(raw);
+
+        const valid =
+            saved &&
+            Number.isFinite(saved.elapsedMs) &&
+            saved.elapsedMs >= 0 &&
+            (
+                saved.startedAt === null ||
+                (
+                    Number.isFinite(saved.startedAt) &&
+                    saved.startedAt >= 0
+                )
+            );
+
+        if (valid) {
+            timerState = {
+                elapsedMs: saved.elapsedMs,
+                startedAt: saved.startedAt
+            };
+        }
+    }
+} catch (error) {
+    console.warn("cpeasy: Could not restore timer:", error);
+}
+
+const timerDisplay = document.getElementById("cpeasy-stopwatch-display");
+const timerToggle = document.getElementById("cpeasy-timer-toggle");
+const timerReset = document.getElementById("cpeasy-timer-reset");
+const timerDot = document.getElementById("cpeasy-timer-dot");
+
+function getElapsedMs() {
+    const runningTime = timerState.startedAt === null
+        ? 0
+        : Math.max(0, Date.now() - timerState.startedAt);
+
+    return timerState.elapsedMs + runningTime;
+}
+
+function saveTimerState() {
+    try {
+        sessionStorage.setItem(timerKey, JSON.stringify(timerState));
+    } catch (error) {
+        console.warn("cpeasy: Could not save timer:", error);
+        timerDisplay.title =
+            "Timer could not be saved; it may reset after refreshing.";
+    }
+}
+
+function renderTimer() {
+    const running = timerState.startedAt !== null;
+
+    timerDisplay.textContent = CpeasyUtils.formatTime(
+        Math.floor(getElapsedMs() / 1000)
+    );
+
+    timerToggle.innerHTML = running ? ICONS.pause : ICONS.playOutline;
+    timerToggle.title = running ? "Pause timer" : "Resume timer";
+    timerToggle.setAttribute("aria-label", timerToggle.title);
+    timerDot.classList.toggle("is-paused", !running);
+}
+
+timerToggle.addEventListener("click", () => {
+    if (timerState.startedAt !== null) {
+        // Freeze the total elapsed duration.
+        timerState.elapsedMs = getElapsedMs();
+        timerState.startedAt = null;
+    } else {
+        // Resume from the saved duration.
+        timerState.startedAt = Date.now();
+    }
+
+    saveTimerState();
+    renderTimer();
+});
+
+timerReset.addEventListener("click", () => {
+    if (!window.confirm("Reset this problem's practice timer to zero?")) {
+        return;
+    }
+
+    const wasRunning = timerState.startedAt !== null;
+
+    timerState = {
+        elapsedMs: 0,
+        startedAt: wasRunning ? Date.now() : null
     };
-    startStopwatch();
 
-    document.getElementById('cpeasy-timer-toggle').addEventListener('click', (event) => {
-        isTimerRunning = !isTimerRunning;
-        event.currentTarget.innerHTML = isTimerRunning ? ICONS.pause : ICONS.playOutline;
-        event.currentTarget.title = isTimerRunning ? 'Pause timer' : 'Resume timer';
-        event.currentTarget.setAttribute('aria-label', isTimerRunning ? 'Pause timer' : 'Resume timer');
-        const dot = document.getElementById('cpeasy-timer-dot');
-        if (dot) dot.classList.toggle('is-paused', !isTimerRunning);
-    });
+    saveTimerState();
+    renderTimer();
+});
 
-    document.getElementById('cpeasy-timer-reset').addEventListener('click', () => {
-        secondsElapsed = 0;
-        document.getElementById('cpeasy-stopwatch-display').innerText = CpeasyUtils.formatTime(0);
-    });
+saveTimerState();
+renderTimer();
+
+// The interval only refreshes the display.
+// Elapsed time comes from timestamps, not interval tick counts.
+stopwatchInterval = setInterval(() => {
+    timerDisplay.textContent = CpeasyUtils.formatTime(
+        Math.floor(getElapsedMs() / 1000)
+    );
+}, 1000);
 
     langSelect.addEventListener("change", async (event) => {
     const nextMode = event.target.value;
@@ -755,13 +844,99 @@ setRunButtonState(true);
         }
     }
 
-    function setRunButtonState(running) {
-        runBtn.disabled = running;
-        runBtn.classList.toggle('is-loading', running);
-        runBtn.innerHTML = running
-            ? `${ICONS.spinner}<span>Running</span>`
-            : `${ICONS.play}<span>Run</span>`;
+    async function runCustomCode() {
+    // Both execution buttons share the same running state.
+    if (runBtn.disabled) return;
+
+    const code = editor.getValue();
+    const selectedMode = langSelect.value;
+
+    if (!code.trim()) {
+        window.alert("Enter some code before running.");
+        editor.focus();
+        return;
     }
+
+    const inputArea = document.getElementById("cpeasy-custom-textarea");
+    const input = inputArea ? inputArea.value : "";
+
+    try {
+        localStorage.setItem(customInputKey, input);
+    } catch (error) {
+        console.warn("cpeasy: Could not save custom input:", error);
+    }
+
+    // Keep the sample tabs visible, but clearly mark them as not executed.
+    const plan = buildRunPlan(input);
+    latestCases = plan.displayCases;
+
+    latestResults = latestCases.map(testCase =>
+        testCase.isCustom
+            ? null
+            : {
+                status: "Not run",
+                verdict: "custom",
+                actual: "",
+                error: ""
+            }
+    );
+
+    const customIndex = latestCases.findIndex(testCase => testCase.isCustom);
+    if (customIndex < 0) return;
+
+    activeTabIndex = customIndex;
+    setRunButtonState(true);
+    renderTestInterface(latestCases, latestResults);
+    setRunTiming("Running custom input…");
+
+    const startedAt = performance.now();
+
+    try {
+        // Construct this unit explicitly so empty input is also supported.
+        await executeRunUnit(
+            {
+                type: "single",
+                stdin: input,
+                displayIndex: customIndex
+            },
+            { code, selectedMode }
+        );
+
+        const elapsed = Math.round(performance.now() - startedAt);
+        setRunTiming(`Custom run completed in ${elapsed}ms — 1 request`);
+    } catch (error) {
+        latestResults[customIndex] = {
+            status: "Execution Error",
+            verdict: "error",
+            actual: "",
+            error: error.message
+        };
+
+        setRunTiming("Custom run failed");
+    } finally {
+        setRunButtonState(false);
+        renderTestInterface(latestCases, latestResults);
+    }
+}
+
+    function setRunButtonState(running) {
+    runBtn.disabled = running;
+    runBtn.classList.toggle("is-loading", running);
+    runBtn.innerHTML = running
+        ? `${ICONS.spinner}<span>Running</span>`
+        : `${ICONS.play}<span>Run</span>`;
+
+    const customRunBtn = document.getElementById("cpeasy-run-custom-btn");
+    const customInputArea = document.getElementById("cpeasy-custom-textarea");
+
+    if (customRunBtn) {
+        customRunBtn.disabled = running;
+    }
+
+    if (customInputArea) {
+        customInputArea.disabled = running;
+    }
+}
 
     async function executeRunUnit(unit, { code, selectedMode }) {
         const displayIndices = unit.type === 'batch'
@@ -1001,6 +1176,13 @@ if (customInput.length > 0) {
 
         if (selectedCase.isCustom) {
             contentContainer.innerHTML = renderCustomCase(selectedCase, selectedResult);
+            const customRunBtn = document.getElementById("cpeasy-run-custom-btn");
+const customInputArea = document.getElementById("cpeasy-custom-textarea");
+
+customRunBtn.disabled = runBtn.disabled;
+customInputArea.disabled = runBtn.disabled;
+
+customRunBtn.addEventListener("click", runCustomCode);
             const customArea = document.getElementById('cpeasy-custom-textarea');
             if (customArea) {
                 customArea.addEventListener('input', (event) => {
@@ -1021,28 +1203,147 @@ if (customInput.length > 0) {
         return '';
     }
 
-    function renderSampleCase(tc, result) {
-        const verdictClass = result ? `is-${result.verdict}` : '';
-        return `
-            <div class="cpeasy-verdict ${verdictClass}">
-                ${result ? `<span class="cpeasy-verdict-icon">${verdictIcon(result.verdict)}</span>` : ''}
-                <span>${CpeasyUtils.escapeHtml(result ? result.status : 'Waiting to run')}</span>
-            </div>
-            <div class="cpeasy-io-grid">
-                ${renderDataBlock("Input", tc.input)}
-                ${renderDataBlock("Your Output", result ? (result.actual || "No output") : "Pending")}
-                ${renderDataBlock("Expected", tc.expected || "No expected output found")}
-            </div>
-            ${result && result.error ? renderErrorBlock(result.error) : ''}
-        `;
+    
+
+    function renderOutputComparison(tc, result) {
+    const expected = tc.expected;
+    const actual = result?.actual ?? "";
+
+    // Show regular output unless there is a sample mismatch.
+    if (!result || result.verdict !== "wrong" || expected == null) {
+        const outputText = !result
+            ? "Pending"
+            : result.status === "Not run"
+                ? "Not run"
+                : actual || "(empty output)";
+
+        return (
+            renderDataBlock("Your Output", outputText) +
+            renderDataBlock(
+                "Expected",
+                expected == null
+                    ? "No expected output found"
+                    : expected || "(empty output)"
+            )
+        );
     }
+
+    // Match the normalization used by normalizeRunResult.
+    const normalize = value =>
+        String(value ?? "").replace(/\r\n/g, "\n").trim();
+
+    const actualText = normalize(actual);
+    const expectedText = normalize(expected);
+
+    const actualLines = actualText === "" ? [] : actualText.split("\n");
+    const expectedLines = expectedText === "" ? [] : expectedText.split("\n");
+
+    const lineCount = Math.max(actualLines.length, expectedLines.length);
+
+    let firstMismatch = -1;
+
+    for (let index = 0; index < lineCount; index++) {
+        if (actualLines[index] !== expectedLines[index]) {
+            firstMismatch = index;
+            break;
+        }
+    }
+
+    // An external verdict may differ from our local text comparison.
+    if (firstMismatch < 0) {
+        return (
+            renderDataBlock("Your Output", actual || "(empty output)") +
+            renderDataBlock("Expected", expected || "(empty output)")
+        );
+    }
+
+    const visibleWhitespace = text =>
+        text.replace(/ /g, "·").replace(/\t/g, "⇥");
+
+    const renderSide = (label, lines) => {
+        // Include a missing-line marker when this side ends too early.
+        const visibleLineCount = Math.max(lines.length, firstMismatch + 1);
+
+        const html = Array.from(
+            { length: visibleLineCount },
+            (_, index) => {
+                const missing = index >= lines.length;
+                const text = missing
+                    ? "(missing line)"
+                    : lines[index] === ""
+                        ? "(empty line)"
+                        : visibleWhitespace(lines[index]);
+
+                const highlighted = index === firstMismatch;
+                const background = highlighted
+                    ? "background:rgba(248,113,113,0.16);"
+                    : "";
+
+                return `
+                    <span style="display:block;${background}">
+                        <span style="color:#9aa6b2;user-select:none;">${index + 1} │ </span>${CpeasyUtils.escapeHtml(text)}
+                    </span>
+                `.trim();
+            }
+        ).join("");
+
+        return `
+            <div class="cpeasy-data-block">
+                <div class="cpeasy-data-label">${label}</div>
+                <pre>${html}</pre>
+            </div>
+        `;
+    };
+
+    return `
+        <div class="cpeasy-muted-note" style="grid-column:1 / -1;">
+            First difference: line ${firstMismatch + 1}.
+            Spaces appear as · and tabs as ⇥.
+            Outer whitespace is ignored, just as in the sample comparison.
+        </div>
+        ${renderSide("Your Output", actualLines)}
+        ${renderSide("Expected", expectedLines)}
+    `;
+}
+
+    function renderSampleCase(tc, result) {
+    const verdictClass = result ? `is-${result.verdict}` : "";
+
+    return `
+        <div class="cpeasy-verdict ${verdictClass}">
+            ${result
+                ? `<span class="cpeasy-verdict-icon">${verdictIcon(result.verdict)}</span>`
+                : ""}
+            <span>${CpeasyUtils.escapeHtml(
+                result ? result.status : "Waiting to run"
+            )}</span>
+        </div>
+
+        <div class="cpeasy-io-grid">
+            ${renderDataBlock("Input", tc.input)}
+            ${renderOutputComparison(tc, result)}
+        </div>
+
+        ${result && result.error
+            ? renderErrorBlock(result.error)
+            : ""}
+    `;
+}
 
     function renderCustomCase(tc, result) {
         return `
             <div class="cpeasy-custom-input-wrap">
                 <label for="cpeasy-custom-textarea">Custom Input</label>
                 <textarea id="cpeasy-custom-textarea" placeholder="Paste custom input here...">${CpeasyUtils.escapeHtml(tc.input)}</textarea>
-            </div>
+                <button
+    id="cpeasy-run-custom-btn"
+    class="cpeasy-primary-btn"
+    type="button"
+    style="margin-top: 10px;"
+>
+    Run Custom
+</button>
+                </div>
             ${result ? `
                 <div class="cpeasy-verdict is-${result.verdict}">
                     <span class="cpeasy-verdict-icon">${verdictIcon(result.verdict)}</span>
@@ -1054,7 +1355,8 @@ if (customInput.length > 0) {
                 ${result.error ? renderErrorBlock(result.error) : ''}
             ` : `
                 <div class="cpeasy-muted-note">
-    Enter input, then click Run. Empty custom input is skipped.
+    Run Custom executes only this input, including empty input.
+The top Run button executes samples and any nonempty custom input.
 </div>
             `}
         `;
