@@ -54,7 +54,7 @@ const pendingLangLabels = Array.isArray(handoff?.languageLabels)
     ? handoff.languageLabels
     : [];
 const pendingProblem = handoff?.problem;
-        const pendingProblem = localStorage.getItem("cpeasy_pending_submit_problem_code");
+        
 
         if (pendingCode) {
             let fillAttempts = 0;
