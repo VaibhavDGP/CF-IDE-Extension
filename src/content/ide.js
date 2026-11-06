@@ -305,10 +305,17 @@ function openCpeasyIde(actionBtn) {
     `;
     body.appendChild(rightPane);
 
-    initializeCpeasyIde({ rightPane, body, mainContent, actionBtn });
+    initializeCpeasyIde({ rightPane, body, mainContent, actionBtn })
+    .catch(error => {
+        console.error("cpeasy: Initialization failed:", error);
+        window.alert(
+            "Could not load your saved solution. Please refresh the page " +
+            "and try again. Existing drafts have not been deleted."
+        );
+    });
 }
 
-function initializeCpeasyIde({ rightPane, body, mainContent, actionBtn }) {
+async function initializeCpeasyIde({ rightPane, body, mainContent, actionBtn }) {
     let stopwatchInterval = null;
     let secondsElapsed = 0;
     let isTimerRunning = true;
@@ -328,13 +335,29 @@ function initializeCpeasyIde({ rightPane, body, mainContent, actionBtn }) {
     const langKey = 'cpeasy_lang_pref';
     const codeKeyFor = (mode) => `${baseKey}_${mode.replace(/[^a-z0-9]/gi, '_')}`;
 
-    const getCodeForMode = (mode) => {
-        const saved = localStorage.getItem(codeKeyFor(mode));
-        if (saved && saved !== "undefined" && saved !== "null" && saved.trim().length > 0) {
-            return saved;
-        }
-        return CPEASY_CONFIG.templates[mode] || "";
-    };
+    const getCodeForMode = async (mode) => {
+    const key = codeKeyFor(mode);
+    const stored = await chrome.storage.local.get(key);
+
+    // Empty strings are valid drafts too.
+    if (typeof stored[key] === "string") {
+        return stored[key];
+    }
+
+    // Copy an old draft into extension storage without deleting the original.
+    const legacy = localStorage.getItem(key);
+
+    if (
+        legacy !== null &&
+        legacy !== "undefined" &&
+        legacy !== "null"
+    ) {
+        await chrome.storage.local.set({ [key]: legacy });
+        return legacy;
+    }
+
+    return CPEASY_CONFIG.templates[mode] || "";
+};
 
     const savedLang = localStorage.getItem(langKey);
     if (savedLang && CPEASY_CONFIG.templates[savedLang]) {
@@ -342,7 +365,7 @@ function initializeCpeasyIde({ rightPane, body, mainContent, actionBtn }) {
     }
     previousMode = langSelect.value;
 
-    targetTextArea.value = getCodeForMode(langSelect.value);
+    targetTextArea.value = await getCodeForMode(langSelect.value);
 
     if (!targetTextArea || typeof window.CodeMirror === 'undefined') {
         console.error("cpeasy: CodeMirror is not loaded. Check manifest.json and lib folder.");
@@ -364,10 +387,56 @@ function initializeCpeasyIde({ rightPane, body, mainContent, actionBtn }) {
     editor.focus();
     setTimeout(() => editor.refresh(), 200);
 
-    editor.on('change', () => {
-        const currentText = editor.getValue();
-        localStorage.setItem(codeKeyFor(langSelect.value), currentText);
-    });
+    let loadingDraft = false;
+let draftSaveQueue = Promise.resolve();
+
+const saveStatus = document.createElement("span");
+saveStatus.setAttribute("role", "status");
+saveStatus.style.cssText =
+    "display:block;padding:4px 12px;font-size:12px;color:#9aa6b2;";
+saveStatus.textContent = "Draft loaded";
+rightPane.querySelector(".cpeasy-footer").prepend(saveStatus);
+
+let latestSaveId = 0;
+
+function saveDraft(mode, code) {
+    const key = codeKeyFor(mode);
+    const saveId = ++latestSaveId;
+
+    saveStatus.textContent = "Saving…";
+
+    // Preserve write order, even if an earlier save failed.
+    const operation = draftSaveQueue
+        .catch(() => {})
+        .then(() => chrome.storage.local.set({ [key]: code }));
+
+    draftSaveQueue = operation;
+
+    operation.then(
+        () => {
+            if (saveId === latestSaveId) {
+                saveStatus.textContent = "Saved";
+            }
+        },
+        error => {
+            if (saveId === latestSaveId) {
+                saveStatus.textContent =
+                    "Save failed — copy your code somewhere safe";
+            }
+
+            console.error("cpeasy: Draft save failed:", error);
+        }
+    );
+
+    return operation;
+}
+
+editor.on("change", () => {
+    if (loadingDraft) return;
+
+    // previousMode identifies the code currently displayed in the editor.
+    void saveDraft(previousMode, editor.getValue());
+});
 
     const resetTemplateBtn = document.getElementById(
     'cpeasy-reset-template-btn'
@@ -485,23 +554,64 @@ if (resetTemplateBtn) {
         document.getElementById('cpeasy-stopwatch-display').innerText = CpeasyUtils.formatTime(0);
     });
 
-    langSelect.addEventListener('change', (event) => {
-        const nextMode = event.target.value;
-        const currentCode = editor.getValue();
-        
-        if (previousMode) {
-            localStorage.setItem(codeKeyFor(previousMode), currentCode);
+    langSelect.addEventListener("change", async (event) => {
+    const nextMode = event.target.value;
+    const oldMode = previousMode;
+    const currentCode = editor.getValue();
+
+    if (nextMode === oldMode) return;
+
+    // Prevent typing or resetting while another draft is loading.
+    rightPane.inert = true;
+
+    try {
+        await saveDraft(oldMode, currentCode);
+        const nextCode = await getCodeForMode(nextMode);
+
+        loadingDraft = true;
+
+        try {
+            editor.setOption("mode", nextMode);
+            editor.setValue(nextCode);
+            previousMode = nextMode;
+        } finally {
+            loadingDraft = false;
         }
 
-        editor.setOption("mode", nextMode);
-        localStorage.setItem(langKey, nextMode);
+        saveStatus.textContent = "Draft loaded";
 
-        const codeToLoad = getCodeForMode(nextMode);
-        editor.setValue(codeToLoad);
-        previousMode = nextMode;
+        try {
+            localStorage.setItem(langKey, nextMode);
+        } catch (error) {
+            console.warn("cpeasy: Could not save language preference:", error);
+        }
+    } catch (error) {
+        langSelect.value = oldMode;
+
+        console.error("cpeasy: Language switch failed:", error);
+        window.alert(
+            "Could not save or load the solution. Your current code " +
+            "has been kept in the editor."
+        );
+    } finally {
+        rightPane.inert = false;
+        editor.refresh();
         editor.focus();
-        setTimeout(() => editor.refresh(), 0);
-    });
+
+        // Refresh the recovery button for the language actually selected.
+        const restoreBtn = resetTemplateBtn?.nextElementSibling;
+
+        if (restoreBtn?.textContent === "Restore code") {
+            try {
+                restoreBtn.hidden = localStorage.getItem(
+                    `${codeKeyFor(previousMode)}_reset_backup`
+                ) === null;
+            } catch {
+                restoreBtn.hidden = true;
+            }
+        }
+    }
+});
 
     setupResizers({ rightPane, editor });
     runBtn.addEventListener('click', () => runCode());
@@ -666,7 +776,7 @@ if (resetTemplateBtn) {
         if (el) el.innerText = text;
     }
 
-    function submitToCodeforces() {
+    async function submitToCodeforces() {
         const code = editor.getValue();
         const cmLang = langSelect.value;
         const cfLangId = CPEASY_CONFIG.cfLanguageIds[cmLang];
@@ -676,6 +786,16 @@ if (resetTemplateBtn) {
             alert("Please write code before submitting.");
             return;
         }
+
+        try {
+    await saveDraft(cmLang, code);
+} catch {
+    window.alert(
+        "Your solution could not be saved. Please copy it somewhere safe " +
+        "before leaving this page."
+    );
+    return;
+}
 
         const { submitUrl, problemCode } = CpeasyUtils.getSubmitInfo();
         localStorage.setItem("cpeasy_pending_submit_code", code);
