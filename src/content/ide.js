@@ -414,6 +414,77 @@ async function initializeCpeasyIde({ rightPane, body, mainContent, actionBtn }) 
     });
 
     window.cpeasyEditor = editor;
+    const fontSizeKey = "cpeasy_editor_font_size";
+const allowedFontSizes = [12, 14, 16, 18, 20, 24];
+
+const fontSizeSelect = document.createElement("select");
+fontSizeSelect.className = "cpeasy-select";
+fontSizeSelect.title = "Editor font size";
+fontSizeSelect.setAttribute("aria-label", "Editor font size");
+
+// Override the normal language-selector width.
+fontSizeSelect.style.setProperty("min-width", "76px", "important");
+fontSizeSelect.style.setProperty("max-width", "90px", "important");
+
+allowedFontSizes.forEach(size => {
+    const option = document.createElement("option");
+    option.value = String(size);
+    option.textContent = `${size}px`;
+    fontSizeSelect.appendChild(option);
+});
+
+fontSizeSelect.value = "14";
+langSelect.insertAdjacentElement("afterend", fontSizeSelect);
+
+function applyFontSize(size) {
+    if (!allowedFontSizes.includes(size)) return;
+
+    fontSizeSelect.value = String(size);
+
+    // Existing editor CSS uses !important, so override it explicitly.
+    editor.getWrapperElement().style.setProperty(
+        "font-size",
+        `${size}px`,
+        "important"
+    );
+
+    editor.refresh();
+}
+
+let fontSizeChanged = false;
+let fontSaveQueue = Promise.resolve();
+
+fontSizeSelect.addEventListener("change", () => {
+    fontSizeChanged = true;
+    const size = Number(fontSizeSelect.value);
+
+    applyFontSize(size);
+
+    // Keep rapid preference changes in order.
+    fontSaveQueue = fontSaveQueue
+        .catch(() => {})
+        .then(() => chrome.storage.local.set({
+            [fontSizeKey]: size
+        }))
+        .catch(error => {
+            console.warn("cpeasy: Could not save font size:", error);
+        });
+});
+
+chrome.storage.local.get(fontSizeKey)
+    .then(stored => {
+        // Don't overwrite a choice made while the saved setting was loading.
+        if (fontSizeChanged || !rightPane.isConnected) return;
+
+        const savedSize = stored[fontSizeKey];
+
+        if (allowedFontSizes.includes(savedSize)) {
+            applyFontSize(savedSize);
+        }
+    })
+    .catch(error => {
+        console.warn("cpeasy: Could not load font size:", error);
+    });
     editor.setSize("100%", "100%");
     editor.focus();
     setTimeout(() => editor.refresh(), 200);
@@ -467,6 +538,112 @@ editor.on("change", () => {
 
     // previousMode identifies the code currently displayed in the editor.
     void saveDraft(previousMode, editor.getValue());
+});
+
+    const exportControls = document.createElement("div");
+exportControls.style.cssText =
+    "display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;";
+
+const copyCodeBtn = document.createElement("button");
+copyCodeBtn.type = "button";
+copyCodeBtn.className = "cpeasy-secondary-btn";
+copyCodeBtn.textContent = "Copy code";
+
+const downloadCodeBtn = document.createElement("button");
+downloadCodeBtn.type = "button";
+downloadCodeBtn.className = "cpeasy-secondary-btn";
+downloadCodeBtn.textContent = "Download code";
+
+const exportStatus = document.createElement("span");
+exportStatus.setAttribute("role", "status");
+exportStatus.style.cssText = "font-size:12px;color:#9aa6b2;";
+
+exportControls.append(copyCodeBtn, downloadCodeBtn, exportStatus);
+submitBtn.before(exportControls);
+
+copyCodeBtn.addEventListener("click", async () => {
+    const code = editor.getValue();
+
+    if (!code.trim()) {
+        exportStatus.textContent = "The editor is empty.";
+        return;
+    }
+
+    copyCodeBtn.disabled = true;
+
+    try {
+        await navigator.clipboard.writeText(code);
+        exportStatus.textContent = "Copied!";
+    } catch (error) {
+        exportStatus.textContent =
+            "Copy failed. Select your code and press Ctrl+C.";
+        console.warn("cpeasy: Clipboard copy failed:", error);
+    } finally {
+        copyCodeBtn.disabled = false;
+    }
+});
+
+downloadCodeBtn.addEventListener("click", () => {
+    const code = editor.getValue();
+
+    if (!code.trim()) {
+        exportStatus.textContent = "The editor is empty.";
+        return;
+    }
+
+    const extensions = {
+        "text/x-c++src": "cpp",
+        "text/x-csrc": "c",
+        "text/x-java": "java",
+        "text/x-python": "py",
+        "javascript": "js",
+        "text/x-csharp": "cs",
+        "text/x-rustsrc": "rs",
+        "text/x-go": "go"
+    };
+
+    const mode = previousMode || langSelect.value;
+    const extension = extensions[mode] || "txt";
+
+    const problemName = window.location.pathname
+        .split("/")
+        .filter(Boolean)
+        .join("-")
+        .replace(/[^a-zA-Z0-9_-]/g, "_") || "solution";
+
+    // The default Java template declares public class Main.
+    const filename = extension === "java"
+        ? "Main.java"
+        : `${problemName}.${extension}`;
+
+    let objectUrl = null;
+    const link = document.createElement("a");
+
+    try {
+        const blob = new Blob([code], {
+            type: "text/plain;charset=utf-8"
+        });
+
+        objectUrl = URL.createObjectURL(blob);
+        link.href = objectUrl;
+        link.download = filename;
+        link.hidden = true;
+
+        document.body.appendChild(link);
+        link.click();
+
+        exportStatus.textContent = `Download requested: ${filename}`;
+    } catch (error) {
+        exportStatus.textContent = "Could not download the code.";
+        console.warn("cpeasy: Download failed:", error);
+    } finally {
+        link.remove();
+
+        if (objectUrl) {
+            const urlToRelease = objectUrl;
+            setTimeout(() => URL.revokeObjectURL(urlToRelease), 10000);
+        }
+    }
 });
 
     const resetTemplateBtn = document.getElementById(
@@ -745,6 +922,24 @@ renderTestInterface(latestCases, latestResults);
 
     const cleanupResizers = setupResizers({ rightPane, editor });
     runBtn.addEventListener('click', () => runCode());
+    editor.addKeyMap({
+    "Ctrl-Enter": () => {
+        if (!runBtn.disabled) {
+            runBtn.click();
+        }
+    },
+    "Cmd-Enter": () => {
+        if (!runBtn.disabled) {
+            runBtn.click();
+        }
+    }
+});
+
+runBtn.title = "Run samples — Ctrl+Enter (Mac: Cmd+Enter)";
+runBtn.setAttribute(
+    "aria-keyshortcuts",
+    "Control+Enter Meta+Enter"
+);
     submitBtn.addEventListener('click', () => submitToCodeforces());
 
 document.getElementById('close-cpeasy-ide').addEventListener('click', () => {
