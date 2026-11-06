@@ -369,15 +369,96 @@ function initializeCpeasyIde({ rightPane, body, mainContent, actionBtn }) {
         localStorage.setItem(codeKeyFor(langSelect.value), currentText);
     });
 
-    const resetTemplateBtn = document.getElementById('cpeasy-reset-template-btn');
-    if (resetTemplateBtn) {
-        resetTemplateBtn.addEventListener('click', () => {
-            const currentLang = langSelect.value;
-            const defaultTemplate = CPEASY_CONFIG.templates[currentLang] || "";
-            editor.setValue(defaultTemplate);
-            localStorage.setItem(codeKeyFor(currentLang), defaultTemplate);
-        });
-    }
+    const resetTemplateBtn = document.getElementById(
+    'cpeasy-reset-template-btn'
+);
+
+if (resetTemplateBtn) {
+    // Separate backup for each problem and language.
+    const backupKeyFor = mode => `${codeKeyFor(mode)}_reset_backup`;
+
+    const restoreBtn = document.createElement('button');
+    restoreBtn.type = 'button';
+    restoreBtn.className = 'cpeasy-select';
+    restoreBtn.textContent = 'Restore code';
+    restoreBtn.title = 'Restore the solution saved before your last reset';
+    restoreBtn.setAttribute('aria-label', restoreBtn.title);
+
+    resetTemplateBtn.insertAdjacentElement('afterend', restoreBtn);
+
+    const updateRestoreButton = () => {
+        try {
+            restoreBtn.hidden =
+                localStorage.getItem(backupKeyFor(langSelect.value)) === null;
+        } catch {
+            restoreBtn.hidden = true;
+        }
+    };
+
+    resetTemplateBtn.addEventListener('click', () => {
+        const mode = langSelect.value;
+        const currentCode = editor.getValue();
+        const template = CPEASY_CONFIG.templates[mode] || '';
+
+        if (currentCode === template) return;
+
+        const confirmed = window.confirm(
+            'Replace your current solution with the default template?\n\n' +
+            'Your current code will be saved so you can restore it.'
+        );
+
+        if (!confirmed) return;
+
+        try {
+            // Save successfully before replacing anything in the editor.
+            localStorage.setItem(backupKeyFor(mode), currentCode);
+        } catch {
+            window.alert(
+                'Could not save a recovery copy. Your code has not been reset.'
+            );
+            return;
+        }
+
+        editor.setValue(template);
+        editor.focus();
+        updateRestoreButton();
+    });
+
+    restoreBtn.addEventListener('click', () => {
+        const mode = langSelect.value;
+        const backupKey = backupKeyFor(mode);
+
+        try {
+            const backup = localStorage.getItem(backupKey);
+
+            if (backup === null) {
+                updateRestoreButton();
+                return;
+            }
+
+            const confirmed = window.confirm(
+                'Restore your saved solution?\n\n' +
+                'Your current editor contents will become the recovery copy.'
+            );
+
+            if (!confirmed) return;
+
+            // Swap the two versions, allowing the restore to be reversed.
+            localStorage.setItem(backupKey, editor.getValue());
+            editor.setValue(backup);
+            editor.focus();
+            updateRestoreButton();
+        } catch {
+            window.alert(
+                'Could not access the recovery copy. Please copy your code ' +
+                'somewhere safe before trying again.'
+            );
+        }
+    });
+
+    langSelect.addEventListener('change', updateRestoreButton);
+    updateRestoreButton();
+}
 
     const startStopwatch = () => {
         if (stopwatchInterval) clearInterval(stopwatchInterval);
