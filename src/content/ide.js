@@ -28,6 +28,9 @@ const ICONS = {
             let fillAttempts = 0;
             const maxFillAttempts = 80;
 
+            let editorSyncPending = false;
+let editorSynced = false;
+
             const tryAutoFill = () => {
                 fillAttempts++;
 
@@ -36,12 +39,58 @@ const ICONS = {
                 const problemInput = document.querySelector('input[name="submittedProblemCode"]');
                 const problemIndexSelect = document.querySelector('select[name="submittedProblemIndex"]');
 
-                if (sourceTextarea || langSelect) {
+                const problemField = problemInput || problemIndexSelect;
+
+if (!sourceTextarea || !langSelect || !problemField) {
+    if (fillAttempts >= maxFillAttempts) {
+        clearInterval(fillTimer);
+        console.warn(
+            "cpeasy: Submission form did not finish loading. Saved code was kept."
+        );
+    }
+    return;
+}
+
+if (sourceTextarea && langSelect && problemField) {
                     if (langSelect && pendingLang && pendingLang !== "undefined") {
-                        const matchingOption = Array.from(langSelect.options).find((option) => {
-                            const optionText = option.textContent.toLowerCase();
-                            return option.value === pendingLang || pendingLangLabels.some(label => optionText.includes(label));
-                        });
+                        const options = Array.from(langSelect.options)
+    .filter(option => !option.disabled && option.value);
+
+// Always try the precise language ID first.
+let matchingOption = options.find(
+    option => option.value === pendingLang
+);
+
+// Use a label only when it identifies exactly one available option.
+// Multiple compiler versions require the user to choose explicitly.
+if (!matchingOption) {
+    const labels = Array.isArray(pendingLangLabels)
+        ? pendingLangLabels.filter(
+            label => typeof label === "string" && label.trim()
+        )
+        : [];
+
+    const candidates = options.filter(option => {
+        const text = option.textContent.toLowerCase();
+
+        return labels.some(label =>
+            text.includes(label.toLowerCase())
+        );
+    });
+
+    if (candidates.length === 1) {
+        matchingOption = candidates[0];
+    }
+}
+
+if (!matchingOption) {
+    clearInterval(fillTimer);
+    console.warn(
+        "cpeasy: Could not select a language unambiguously. " +
+        "Saved code was kept. Select the language and paste your code manually."
+    );
+    return;
+}
 
                         if (matchingOption && langSelect.value !== matchingOption.value) {
                             langSelect.value = matchingOption.value;
@@ -60,7 +109,7 @@ const ICONS = {
                     if (problemIndexSelect && pendingProblem && pendingProblem !== "undefined") {
                         const targetIndex = pendingProblem.replace(/^[0-9]+/, '').toUpperCase();
                         for (let option of problemIndexSelect.options) {
-                            if (option.value.toUpperCase() === targetIndex || option.text.toUpperCase().startsWith(targetIndex)) {
+                            if (option.value.toUpperCase() === targetIndex) {
                                 if (problemIndexSelect.value !== option.value) {
                                     problemIndexSelect.value = option.value;
                                     problemIndexSelect.dispatchEvent(new Event('change', { bubbles: true }));
@@ -75,32 +124,57 @@ const ICONS = {
                         sourceTextarea.dispatchEvent(new Event('input', { bubbles: true }));
                         sourceTextarea.dispatchEvent(new Event('change', { bubbles: true }));
 
-                        try {
-                            const escapedCode = JSON.stringify(pendingCode);
-                            window.location.href = `javascript:(function(){
-                                var editorDiv = document.getElementById('editor');
-                                if (editorDiv && window.ace) {
-                                    try {
-                                        var aceEd = window.ace.edit(editorDiv);
-                                        if (aceEd) {
-                                            aceEd.setValue(${escapedCode}, -1);
-                                            aceEd.clearSelection();
-                                        }
-                                    } catch(e) {}
-                                }
-                            })();void(0);`;
-                        } catch (err) {
-                            console.error("cpeasy: Ace sync error", err);
-                        }
+                        if (!editorSyncPending && !editorSynced) {
+    editorSyncPending = true;
+
+    chrome.runtime.sendMessage(
+        {
+            action: "syncSubmissionEditor",
+            code: pendingCode
+        },
+        (response) => {
+            editorSyncPending = false;
+
+            if (chrome.runtime.lastError) {
+                console.warn(
+                    "cpeasy: Editor sync failed:",
+                    chrome.runtime.lastError.message
+                );
+                return;
+            }
+
+            editorSynced = response?.success === true;
+
+            if (response?.error) {
+                console.warn("cpeasy: Editor sync failed:", response.error);
+            }
+        }
+    );
+}
                     }
 
-                    if (!sourceTextarea || sourceTextarea.value === pendingCode || fillAttempts >= maxFillAttempts) {
-                        clearInterval(fillTimer);
-                        localStorage.removeItem("cpeasy_pending_submit_code");
-                        localStorage.removeItem("cpeasy_pending_submit_lang");
-                        localStorage.removeItem("cpeasy_pending_submit_lang_labels");
-                        localStorage.removeItem("cpeasy_pending_submit_problem_code");
-                    }
+                    const expectedProblemIndex = (pendingProblem || "")
+    .replace(/^[0-9]+/, "")
+    .toUpperCase();
+
+const problemFilled = problemInput
+    ? problemInput.value === pendingProblem
+    : problemIndexSelect.value.toUpperCase() === expectedProblemIndex;
+
+const sourceFilled =
+    editorSynced && sourceTextarea.value === pendingCode;
+const languageFilled = Boolean(langSelect.value);
+
+// Retain the pending submission as a recovery copy.
+// A later click on "Go to Codeforces Submit" overwrites these values.
+if (sourceFilled && languageFilled && problemFilled) {
+    clearInterval(fillTimer);
+} else if (fillAttempts >= maxFillAttempts) {
+    clearInterval(fillTimer);
+    console.warn(
+        "cpeasy: Autofill could not finish. Saved code was kept."
+    );
+}
                 } else if (fillAttempts >= maxFillAttempts) {
                     clearInterval(fillTimer);
                 }

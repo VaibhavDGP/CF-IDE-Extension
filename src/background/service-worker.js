@@ -174,3 +174,103 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     return true;
 });
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request?.action !== "syncSubmissionEditor") return;
+
+    let pageUrl;
+
+    try {
+        pageUrl = new URL(sender.url);
+    } catch {
+        sendResponse({ success: false, error: "Invalid page URL." });
+        return;
+    }
+
+    const allowedHost =
+        pageUrl.hostname === "codeforces.com" ||
+        pageUrl.hostname.endsWith(".codeforces.com");
+
+    if (
+        sender.id !== chrome.runtime.id ||
+        !sender.tab?.id ||
+        !allowedHost ||
+        !/\/submit\/?$/.test(pageUrl.pathname) ||
+        typeof request.code !== "string"
+    ) {
+        sendResponse({
+            success: false,
+            error: "Editor synchronization is only allowed on Codeforces submit pages."
+        });
+        return;
+    }
+
+    chrome.scripting.executeScript({
+        target: {
+            tabId: sender.tab.id,
+            frameIds: [sender.frameId ?? 0]
+        },
+        world: "MAIN",
+        func: (code) => {
+            const source = document.querySelector(
+                '#sourceCodeTextarea, textarea[name="source"]'
+            );
+
+            if (!source) return false;
+
+            const editorElement = document.getElementById("editor");
+            const codeMirrorElement =
+                source.closest("form")?.querySelector(".CodeMirror");
+
+            let editor = null;
+
+            // Only use an existing Ace instance; do not create a new editor.
+            if (editorElement && editorElement.getClientRects().length > 0) {
+                editor = editorElement.env?.editor;
+
+                if (
+                    !editor ||
+                    typeof editor.setValue !== "function" ||
+                    typeof editor.getValue !== "function"
+                ) {
+                    return false;
+                }
+            } else if (
+                codeMirrorElement &&
+                codeMirrorElement.getClientRects().length > 0
+            ) {
+                editor = codeMirrorElement.CodeMirror;
+
+                if (!editor) return false;
+            } else if (source.getClientRects().length === 0) {
+                // The visible editor may still be loading.
+                return false;
+            }
+
+            if (editor) {
+                editor.setValue(code);
+                editor.clearSelection?.();
+
+                if (editor.getValue() !== code) return false;
+            }
+
+            source.value = code;
+            source.dispatchEvent(new Event("input", { bubbles: true }));
+            source.dispatchEvent(new Event("change", { bubbles: true }));
+
+            return source.value === code &&
+                (!editor || editor.getValue() === code);
+        },
+        args: [request.code]
+    }).then(
+        results => sendResponse({
+            success: results[0]?.result === true
+        }),
+        error => sendResponse({
+            success: false,
+            error: error.message
+        })
+    );
+
+    return true;
+});
