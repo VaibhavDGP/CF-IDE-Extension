@@ -543,69 +543,60 @@ function initializeCpeasyIde({ rightPane, body, mainContent, actionBtn }) {
     }
 
     function buildRunPlan(customInput) {
-        const sampleBlocks = document.querySelectorAll('.sample-test');
-        const runUnits = [];
-        const displayCases = [];
+    const sampleBlocks = document.querySelectorAll('.sample-test');
+    const runUnits = [];
+    const displayCases = [];
 
-        sampleBlocks.forEach((block) => {
-            const inputEl = block.querySelector('.input pre');
-            const outputEl = block.querySelector('.output pre');
-            if (!inputEl) return;
+    sampleBlocks.forEach((block) => {
+        const inputs = block.querySelectorAll('.input pre');
+        const outputs = block.querySelectorAll('.output pre');
 
-            const inputGroups = CpeasyUtils.extractExampleGroups(inputEl);
-            const outputGroups = outputEl ? CpeasyUtils.extractExampleGroups(outputEl) : null;
+        inputs.forEach((inputEl, index) => {
+            const outputEl = outputs[index];
 
-            if (inputGroups && outputGroups) {
-                const sharedIdx = inputGroups.order
-                    .filter(idx => outputGroups.groups.has(idx))
-                    .sort((a, b) => a - b);
+            // Preserve the full sample, including its test-count line.
+            const readSample = (element) => {
+                const lines = element.querySelectorAll('.test-example-line');
 
-                if (sharedIdx.length > 1) {
-                    const displayStartIndex = displayCases.length;
-                    const subCases = sharedIdx.map((idx) => {
-                        const expectedLines = outputGroups.groups.get(idx);
-                        const entry = {
-                            input: inputGroups.groups.get(idx).join('\n'),
-                            expected: expectedLines.join('\n'),
-                            expectedLineCount: expectedLines.length
-                        };
-                        displayCases.push({ input: entry.input, expected: entry.expected, isCustom: false });
-                        return entry;
-                    });
+                return lines.length > 0
+                    ? Array.from(lines, line => line.innerText).join('\n')
+                    : element.innerText;
+            };
 
-                    runUnits.push({
-                        type: 'batch',
-                        stdin: CpeasyUtils.extractCleanText(inputEl),
-                        subCases,
-                        displayStartIndex
-                    });
-                    return;
-                }
-
-                if (sharedIdx.length === 1) {
-                    const idx = sharedIdx[0];
-                    const input = inputGroups.groups.get(idx).join('\n');
-                    const expected = outputGroups.groups.get(idx).join('\n');
-                    const displayIndex = displayCases.length;
-                    displayCases.push({ input, expected, isCustom: false });
-                    runUnits.push({ type: 'single', stdin: input, displayIndex });
-                    return;
-                }
-            }
-
-            const input = CpeasyUtils.extractCleanText(inputEl);
-            const expected = CpeasyUtils.extractCleanText(outputEl);
+            const input = readSample(inputEl);
+            const expected = outputEl ? readSample(outputEl) : null;
             const displayIndex = displayCases.length;
-            displayCases.push({ input, expected, isCustom: false });
-            runUnits.push({ type: 'single', stdin: input, displayIndex });
+
+            displayCases.push({
+                input,
+                expected,
+                isCustom: false
+            });
+
+            runUnits.push({
+                type: 'single',
+                stdin: input,
+                displayIndex
+            });
         });
+    });
 
-        const customDisplayIndex = displayCases.length;
-        displayCases.push({ input: customInput, expected: "", isCustom: true });
-        runUnits.push({ type: 'single', stdin: customInput, displayIndex: customDisplayIndex });
+    const customDisplayIndex = displayCases.length;
 
-        return { runUnits, displayCases };
-    }
+    displayCases.push({
+        input: customInput,
+        expected: '',
+        isCustom: true
+    });
+
+    runUnits.push({
+        type: 'single',
+        stdin: customInput,
+        displayIndex: customDisplayIndex
+    });
+
+    return { runUnits, displayCases };
+}
 
     function renderTestInterface(testCases, results) {
         consoleOutput.innerHTML = `
@@ -822,33 +813,67 @@ function executeOnJudge0({ compilerName, code, stdin }) {
 
 function normalizeRunResult(data, tc) {
     if (!data) {
-        return { status: "Execution Error", verdict: "error", actual: "", error: "Empty response received." };
+        return {
+            status: "Execution Error",
+            verdict: "error",
+            actual: "",
+            error: "Empty response received."
+        };
     }
 
-    const actualOut = (data.program_output || "").trim();
-    let runError = (data.compiler_error || data.program_error || "").trim();
-    const statusCode = String(data.status);
+    const actual = String(data.program_output || "");
+    const statusId = data.judge_status_id;
 
-    if (tc.isCustom) {
-        return runError
-            ? { status: "Execution Error", verdict: "error", actual: actualOut, error: runError }
-            : { status: "Finished", verdict: "custom", actual: actualOut, error: "" };
+    // Check execution status before comparing output, including custom tests.
+    if (String(data.status) !== "0") {
+        let status = "Runtime Error";
+        let verdict = "error";
+
+        if (statusId === 6) {
+            status = "Compilation Error";
+            verdict = "warning";
+        } else if (statusId === 5) {
+            status = "Time Limit Exceeded";
+        } else if (statusId === 13 || statusId === 14) {
+            status = "Execution Service Error";
+        } else if (statusId === 4) {
+            status = "Wrong Answer";
+            verdict = "wrong";
+        }
+
+        const details = [
+            data.compiler_error,
+            data.program_error
+        ].filter(Boolean).join("\n").trim();
+
+        return {
+            status,
+            verdict,
+            actual,
+            error: details || data.judge_status_description || status
+        };
     }
 
-    if (data.compiler_error && statusCode !== "0") {
-        return { status: "Compilation Error", verdict: "warning", actual: actualOut, error: runError };
+    if (tc.isCustom || tc.expected === null) {
+        return {
+            status: tc.isCustom ? "Finished" : "Not checked",
+            verdict: "custom",
+            actual,
+            error: tc.isCustom
+                ? ""
+                : "No expected output was found for this sample."
+        };
     }
 
-    if (statusCode !== "0") {
-        runError = runError || "Runtime execution failed.";
-        return { status: "Runtime Error", verdict: "error", actual: actualOut, error: runError };
-    }
+    const normalize = value =>
+        String(value ?? "").replace(/\r\n/g, "\n").trim();
 
-    const cleanActual = actualOut.replace(/\r\n/g, '\n').trim();
-    const cleanExpected = (tc.expected || "").replace(/\r\n/g, '\n').trim();
-    if (cleanActual === cleanExpected) {
-        return { status: "Accepted", verdict: "accepted", actual: actualOut, error: "" };
-    }
+    const matches = normalize(actual) === normalize(tc.expected);
 
-    return { status: "Wrong Answer", verdict: "wrong", actual: actualOut, error: "" };
+    return {
+        status: matches ? "Sample passed" : "Wrong Answer",
+        verdict: matches ? "accepted" : "wrong",
+        actual,
+        error: ""
+    };
 }
