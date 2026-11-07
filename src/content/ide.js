@@ -284,16 +284,15 @@ function openCpeasyIde(actionBtn) {
             </header>
 
             <section class="cpeasy-toolbar" aria-label="Editor controls">
-                <select id="cpeasy-lang-select" class="cpeasy-select" title="Language">
-                    <option value="text/x-c++src">C++</option>
-                    <option value="text/x-csrc">C</option>
-                    <option value="text/x-java">Java</option>
-                    <option value="text/x-python">Python</option>
-                    <option value="javascript">JavaScript</option>
-                    <option value="text/x-csharp">C#</option>
-                    <option value="text/x-rustsrc">Rust</option>
-                    <option value="text/x-go">Go</option>
-                </select>
+                <select
+    id="cpeasy-lang-select"
+    class="cpeasy-select"
+    title="C++ editor"
+    aria-label="Editor language: C++"
+    disabled
+>
+    <option value="text/x-c++src">C++</option>
+</select>
                 <button id="cpeasy-reset-template-btn" class="cpeasy-icon-btn cpeasy-icon-btn-sm" type="button" title="Reset template">${ICONS.reset}</button>
                 <div class="cpeasy-toolbar-spacer"></div>
                 <div class="cpeasy-timer" title="Practice timer">
@@ -363,7 +362,7 @@ async function initializeCpeasyIde({ rightPane, body, mainContent, actionBtn }) 
 
     const baseKey = 'cpeasy_code_' + window.location.pathname.replace(/\/$/, "");
     const customInputKey = 'cpeasy_custom_input_' + window.location.pathname.replace(/\/$/, "");
-    const langKey = 'cpeasy_lang_pref';
+    
     const codeKeyFor = (mode) => `${baseKey}_${mode.replace(/[^a-z0-9]/gi, '_')}`;
 
 
@@ -392,11 +391,8 @@ async function initializeCpeasyIde({ rightPane, body, mainContent, actionBtn }) 
     return CPEASY_CONFIG.templates[mode] || "";
 };
 
-    const savedLang = localStorage.getItem(langKey);
-    if (savedLang && CPEASY_CONFIG.templates[savedLang]) {
-        langSelect.value = savedLang;
-    }
-    previousMode = langSelect.value;
+    langSelect.value = "text/x-c++src";
+previousMode = langSelect.value;
 
     targetTextArea.value = await getCodeForMode(langSelect.value);
 
@@ -416,6 +412,7 @@ async function initializeCpeasyIde({ rightPane, body, mainContent, actionBtn }) 
     });
 
     window.cpeasyEditor = editor;
+    const cppEditorTools = CpeasyCppEditor.attach(editor);
     const fontSizeKey = "cpeasy_editor_font_size";
 const allowedFontSizes = [12, 14, 16, 18, 20, 24];
 
@@ -776,7 +773,7 @@ if (resetTemplateBtn) {
         }
     });
 
-    langSelect.addEventListener('change', updateRestoreButton);
+    
     updateRestoreButton();
 }
 
@@ -895,65 +892,7 @@ stopwatchInterval = setInterval(() => {
     );
 }, 1000);
 
-    langSelect.addEventListener("change", async (event) => {
-    const nextMode = event.target.value;
-    const oldMode = previousMode;
-    const currentCode = editor.getValue();
-
-    if (nextMode === oldMode) return;
-
-    // Prevent typing or resetting while another draft is loading.
-    rightPane.inert = true;
-
-    try {
-        await saveDraft(oldMode, currentCode);
-        const nextCode = await getCodeForMode(nextMode);
-
-        loadingDraft = true;
-
-        try {
-            editor.setOption("mode", nextMode);
-            editor.setValue(nextCode);
-            previousMode = nextMode;
-        } finally {
-            loadingDraft = false;
-        }
-
-        saveStatus.textContent = "Draft loaded";
-
-        try {
-            localStorage.setItem(langKey, nextMode);
-        } catch (error) {
-            console.warn("cpeasy: Could not save language preference:", error);
-        }
-    } catch (error) {
-        langSelect.value = oldMode;
-
-        console.error("cpeasy: Language switch failed:", error);
-        window.alert(
-            "Could not save or load the solution. Your current code " +
-            "has been kept in the editor."
-        );
-    } finally {
-        rightPane.inert = false;
-editor.refresh();
-editor.focus();
-updateResultsFreshness();
-
-        // Refresh the recovery button for the language actually selected.
-        const restoreBtn = resetTemplateBtn?.nextElementSibling;
-
-        if (restoreBtn?.textContent === "Restore code") {
-            try {
-                restoreBtn.hidden = localStorage.getItem(
-                    `${codeKeyFor(previousMode)}_reset_backup`
-                ) === null;
-            } catch {
-                restoreBtn.hidden = true;
-            }
-        }
-    }
-});
+    
 
 const initialPlan = buildRunPlan(
     localStorage.getItem(customInputKey) || ""
@@ -988,6 +927,7 @@ runBtn.setAttribute(
 
 document.getElementById('close-cpeasy-ide').addEventListener('click', () => {
     if (stopwatchInterval) clearInterval(stopwatchInterval);
+    cppEditorTools.dispose();
     cleanupResizers();
 setFocusMode(false);
 rightPane.remove();
@@ -1191,6 +1131,11 @@ setRunButtonState(true);
         try {
             const compilerName = CPEASY_CONFIG.judge0Compilers[selectedMode] || selectedMode;
             const response = await executeOnJudge0({ compilerName, code, stdin: unit.stdin });
+
+            cppEditorTools.showCompilerErrors(
+    response?.compiler_error || "",
+    code
+);
 
             if (unit.type === 'batch') {
                 distributeBatchResult(unit, response);

@@ -862,3 +862,48 @@
 #cpeasy-ide-container[data-theme="light"] .cpeasy-resizer-grip {
     background: #94a3b8 !important;
 }
+
+#cpeasy-lang-select:disabled {
+    appearance: none;
+    opacity: 1;
+    cursor: default;
+    width: auto;
+    min-width: 72px;
+    padding-right: 16px;
+}
+
+/* C++ autocomplete popup */
+.CodeMirror-hints {
+    z-index: 2147483647;
+    max-height: 240px;
+    min-width: 180px;
+    padding: 6px;
+    border: 1px solid #454545;
+    border-radius: 8px;
+    background: #252526;
+    color: #d4d4d4;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 14px;
+}
+
+.CodeMirror-hints .CodeMirror-hint {
+    padding: 5px 10px;
+    border-radius: 4px;
+    color: inherit;
+    line-height: 1.4;
+}
+
+.CodeMirror-hints .CodeMirror-hint-active {
+    background: #094771;
+    color: #ffffff;
+}
+
+/* Hover over an underlined line to read the compiler error. */
+.cpeasy-compiler-error {
+    text-decoration-line: underline;
+    text-decoration-style: wavy;
+    text-decoration-color: #f14c4c;
+    text-decoration-thickness: 1.5px;
+    text-underline-offset: 3px;
+}

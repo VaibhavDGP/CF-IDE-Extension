@@ -6,24 +6,7 @@ const POLL_INTERVAL_MS = 1000;
 // Keep the language IDs currently used by the extension.
 const LANGUAGE_IDS = {
     "gcc-13.2.0": 105,
-    "gcc-head": 105,
-    "clang-head": 105,
-    "text/x-c++src": 105,
-    "gcc-head-c": 103,
-    "gcc-13.2.0-c": 103,
-    "text/x-csrc": 103,
-    "openjdk-head": 91,
-    "text/x-java": 91,
-    "cpython-head": 100,
-    "text/x-python": 100,
-    "nodejs-head": 102,
-    "javascript": 102,
-    "dotnetcore-head": 51,
-    "text/x-csharp": 51,
-    "rust-head": 108,
-    "text/x-rustsrc": 108,
-    "go-head": 107,
-    "text/x-go": 107
+    "text/x-c++src": 105
 };
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -97,7 +80,7 @@ async function executeCode(payload) {
     const languageId = LANGUAGE_IDS[compiler];
 
     if (!languageId) {
-        throw new Error("Unsupported language. Select another language.");
+        throw new Error("Unsupported language. This extension supports C++ only.");
     }
 
     if (typeof code !== "string" || !code.trim()) {
