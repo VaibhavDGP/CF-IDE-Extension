@@ -723,3 +723,142 @@
 #cpeasy-ide-container.cpeasy-focus-mode #cpeasy-resizer-x {
     display: none !important;
 }
+
+/* Theme applies only to the IDE, not the Codeforces page. */
+#cpeasy-ide-container[data-theme="dark"] {
+    color-scheme: dark;
+}
+
+#cpeasy-ide-container[data-theme="light"] {
+    color-scheme: light;
+
+    --cpeasy-bg: #f8fafc;
+    --cpeasy-panel: #ffffff;
+    --cpeasy-panel-soft: #eef2f7;
+    --cpeasy-line: #cbd5e1;
+    --cpeasy-line-soft: #e2e8f0;
+    --cpeasy-text: #172033;
+    --cpeasy-muted: #526176;
+    --cpeasy-code: #ffffff;
+
+    --cpeasy-accent: #6350d8;
+    --cpeasy-accent-strong: #5140bd;
+    --cpeasy-accent-soft: rgba(99, 80, 216, 0.1);
+    --cpeasy-blue: #6350d8;
+    --cpeasy-blue-strong: #5140bd;
+
+    --cpeasy-green: #15803d;
+    --cpeasy-green-bg: #ecfdf3;
+    --cpeasy-green-border: #86d4a5;
+
+    --cpeasy-red: #b91c1c;
+    --cpeasy-red-bg: #fff1f2;
+    --cpeasy-red-border: #fda4af;
+
+    --cpeasy-amber: #92400e;
+    --cpeasy-amber-bg: #fffbeb;
+    --cpeasy-amber-border: #f4cd79;
+}
+
+/* Replace hard-coded dark backgrounds. */
+#cpeasy-ide-container[data-theme="light"] :is(
+    .cpeasy-select,
+    .cpeasy-secondary-btn,
+    .cpeasy-data-block,
+    .cpeasy-error-block,
+    .cpeasy-custom-input-wrap
+) {
+    background: var(--cpeasy-panel) !important;
+    color: var(--cpeasy-text) !important;
+}
+
+#cpeasy-ide-container[data-theme="light"] .cpeasy-icon-btn:hover {
+    background: var(--cpeasy-panel-soft) !important;
+    border-color: var(--cpeasy-line) !important;
+}
+
+#cpeasy-ide-container[data-theme="light"] :is(
+    .cpeasy-case-tab,
+    .cpeasy-case-tab.is-active,
+    .cpeasy-data-label,
+    .cpeasy-custom-input-wrap label,
+    .cpeasy-data-block pre,
+    .cpeasy-custom-input-wrap textarea,
+    .CodeMirror
+) {
+    color: var(--cpeasy-text) !important;
+}
+
+#cpeasy-ide-container[data-theme="light"] :is(
+    .cpeasy-primary-btn,
+    .cpeasy-submit-btn
+) {
+    color: #ffffff !important;
+}
+
+#cpeasy-ide-container[data-theme="light"] :is(
+    .cpeasy-close-btn,
+    .cpeasy-verdict.is-wrong,
+    .cpeasy-verdict.is-error,
+    .cpeasy-case-tab.is-wrong small,
+    .cpeasy-case-tab.is-error small,
+    .cpeasy-error-block pre,
+    .cpeasy-error-token,
+    .cpeasy-empty-error strong
+) {
+    color: var(--cpeasy-red) !important;
+}
+
+#cpeasy-ide-container[data-theme="light"] :is(
+    .cpeasy-verdict.is-warning,
+    .cpeasy-case-tab.is-warning small,
+    .cpeasy-warning-token,
+    .cpeasy-empty-warning strong,
+    #cpeasy-custom-stale-notice
+) {
+    color: var(--cpeasy-amber) !important;
+}
+
+#cpeasy-ide-container[data-theme="light"] .cpeasy-crash-token {
+    color: #a21caf !important;
+}
+
+#cpeasy-ide-container[data-theme="light"] :is(
+    .cpeasy-execution-stats,
+    .cpeasy-footer > span,
+    .cpeasy-data-block pre span[style]
+) {
+    color: var(--cpeasy-muted) !important;
+}
+
+/* General stale-results notice inserted above the output area. */
+#cpeasy-ide-container[data-theme="light"]
+.cpeasy-console-panel > [role="status"] {
+    color: var(--cpeasy-amber) !important;
+}
+
+/* Editor gutters, cursor, selection, and scrollbar corners. */
+#cpeasy-ide-container[data-theme="light"] :is(
+    .CodeMirror-gutters,
+    .CodeMirror-scrollbar-filler,
+    .CodeMirror-gutter-filler
+) {
+    background: #f1f5f9 !important;
+    border-color: var(--cpeasy-line-soft) !important;
+}
+
+#cpeasy-ide-container[data-theme="light"] .CodeMirror-linenumber {
+    color: #64748b !important;
+}
+
+#cpeasy-ide-container[data-theme="light"] .CodeMirror-cursor {
+    border-left-color: #172033 !important;
+}
+
+#cpeasy-ide-container[data-theme="light"] .CodeMirror-selected {
+    background: #dbeafe !important;
+}
+
+#cpeasy-ide-container[data-theme="light"] .cpeasy-resizer-grip {
+    background: #94a3b8 !important;
+}

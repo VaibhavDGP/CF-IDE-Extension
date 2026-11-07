@@ -598,6 +598,67 @@ focusModeBtn.setAttribute("aria-pressed", "false");
 closeIdeBtn.before(headerActions);
 headerActions.append(focusModeBtn, closeIdeBtn);
 
+const themeKey = "cpeasy_theme";
+let currentTheme = "dark";
+let themeChangedByUser = false;
+
+const themeBtn = document.createElement("button");
+themeBtn.type = "button";
+themeBtn.className = "cpeasy-icon-btn";
+themeBtn.setAttribute("aria-label", "Switch to light theme");
+
+headerActions.prepend(themeBtn);
+
+function applyTheme(theme) {
+    currentTheme = theme === "light" ? "light" : "dark";
+    const light = currentTheme === "light";
+
+    rightPane.dataset.theme = currentTheme;
+
+    // CodeMirror's default light theme is included in its existing CSS.
+    editor.setOption("theme", light ? "default" : "material");
+
+    themeBtn.textContent = light ? "☾" : "☀";
+    themeBtn.title = light
+        ? "Switch to dark theme"
+        : "Switch to light theme";
+
+    themeBtn.setAttribute("aria-label", themeBtn.title);
+    editor.refresh();
+}
+
+applyTheme("dark");
+
+chrome.storage.local.get(themeKey)
+    .then(stored => {
+        if (themeChangedByUser || !rightPane.isConnected) return;
+
+        if (stored[themeKey] === "light" || stored[themeKey] === "dark") {
+            applyTheme(stored[themeKey]);
+        }
+    })
+    .catch(error => {
+        console.warn("cpeasy: Could not load theme:", error);
+    });
+
+themeBtn.addEventListener("click", async () => {
+    themeChangedByUser = true;
+    themeBtn.disabled = true;
+
+    applyTheme(currentTheme === "dark" ? "light" : "dark");
+
+    try {
+        await chrome.storage.local.set({
+            [themeKey]: currentTheme
+        });
+    } catch (error) {
+        console.warn("cpeasy: Could not save theme:", error);
+        themeBtn.title += " — preference could not be saved";
+    } finally {
+        themeBtn.disabled = false;
+    }
+});
+
 function setFocusMode(enabled) {
     rightPane.classList.toggle("cpeasy-focus-mode", enabled);
 
