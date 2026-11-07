@@ -35,7 +35,8 @@
     "vendor/codemirror/codemirror.min.css",
     "vendor/codemirror/material.min.css",
     "vendor/codemirror/show-hint.css",
-    "src/styles/cpeasy.css"
+    "src/styles/cpeasy.css",
+    "src/styles/cpeasy-refresh.css"
 ],
       "js": [
     "vendor/codemirror/codemirror.min.js",

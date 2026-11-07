@@ -111,7 +111,7 @@ const CpeasyCppEditor = (() => {
             const beforeCursor = cm.getLine(cursor.line).slice(0, cursor.ch);
             const prefix = beforeCursor.match(/[A-Za-z_]\w*$/)?.[0] || "";
 
-            if (prefix.length >= 2) {
+            if (prefix.length >= 1) {
                 showSuggestions(cm);
             }
         }

@@ -1,16 +1,27 @@
 const CPEASY_CONFIG = {
     templates: {
-        "text/x-c++src": `#include <iostream>
+    "text/x-c++src": `#include <bits/stdc++.h>
 using namespace std;
 
+void solve() {
+    // Write your solution here.
+}
+
 int main() {
-    ios_base::sync_with_stdio(false);
+    ios::sync_with_stdio(false);
     cin.tie(nullptr);
+
+    int t = 1;
+    // cin >> t; // Uncomment if the input starts with a test-case count.
+
+    while (t--) {
+        solve();
+    }
 
     return 0;
 }
 `
-    },
+},
 
     judge0Compilers: {
         "text/x-c++src": "gcc-13.2.0"

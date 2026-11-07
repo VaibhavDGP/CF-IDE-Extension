@@ -270,70 +270,158 @@ function openCpeasyIde(actionBtn) {
     const rightPane = document.createElement('aside');
     rightPane.id = 'cpeasy-ide-container';
     rightPane.innerHTML = `
-        <div id="cpeasy-resizer-x" class="cpeasy-resizer-x" aria-label="Resize editor width"></div>
-        <div class="cpeasy-shell">
-            <header class="cpeasy-topbar">
-                <div class="cpeasy-brand">
-                    <div class="cpeasy-logo">cp</div>
-                    <div>
-                        <div class="cpeasy-title">cpeasy IDE</div>
-                        <div class="cpeasy-subtitle">Run samples before submitting</div>
-                    </div>
-                </div>
-                <button id="close-cpeasy-ide" class="cpeasy-icon-btn cpeasy-close-btn" type="button" title="Close IDE" aria-label="Close IDE">${ICONS.close}</button>
-            </header>
+    <div
+        id="cpeasy-resizer-x"
+        class="cpeasy-resizer-x"
+        aria-label="Resize editor width"
+    ></div>
 
-            <section class="cpeasy-toolbar" aria-label="Editor controls">
-                <select
-    id="cpeasy-lang-select"
-    class="cpeasy-select"
-    title="C++ editor"
-    aria-label="Editor language: C++"
-    disabled
->
-    <option value="text/x-c++src">C++</option>
-</select>
-                <button id="cpeasy-reset-template-btn" class="cpeasy-icon-btn cpeasy-icon-btn-sm" type="button" title="Reset template">${ICONS.reset}</button>
-                <div class="cpeasy-toolbar-spacer"></div>
-                <div class="cpeasy-timer" title="Practice timer">
-                    <span id="cpeasy-timer-dot" class="cpeasy-timer-dot"></span>
-                    <span class="cpeasy-timer-icon">${ICONS.clock}</span>
-                    <span id="cpeasy-stopwatch-display" class="cpeasy-time-text">00:00</span>
-                    <button id="cpeasy-timer-toggle" class="cpeasy-icon-btn cpeasy-icon-btn-sm" type="button" title="Pause timer" aria-label="Pause timer">${ICONS.pause}</button>
-                    <button id="cpeasy-timer-reset" class="cpeasy-icon-btn cpeasy-icon-btn-sm" type="button" title="Reset timer" aria-label="Reset timer">${ICONS.reset}</button>
+    <div class="cpeasy-shell">
+        <header class="cpeasy-topbar">
+            <div class="cpeasy-brand">
+                <span class="cpeasy-logo">cp</span>
+                <span class="cpeasy-title">cpeasy</span>
+            </div>
+
+            <details class="cpeasy-settings">
+                <summary title="Editor settings">Settings</summary>
+
+                <div class="cpeasy-settings-panel">
+                    <div class="cpeasy-settings-heading">
+                        Editor settings
+                    </div>
+
+                    <div class="cpeasy-setting-row">
+                        <span>Font size</span>
+                        <span id="cpeasy-font-size-slot"></span>
+                    </div>
+
+                    <button
+                        id="cpeasy-reset-template-btn"
+                        class="cpeasy-secondary-btn"
+                        type="button"
+                        title="Reset code to the C++ template"
+                    >
+                        ${ICONS.reset}
+                        <span>Reset code</span>
+                    </button>
                 </div>
-                <button id="cpeasy-run-btn" class="cpeasy-primary-btn" type="button">${ICONS.play}<span>Run</span></button>
+            </details>
+
+            <button
+                id="close-cpeasy-ide"
+                class="cpeasy-icon-btn cpeasy-close-btn"
+                type="button"
+                title="Close IDE"
+                aria-label="Close IDE"
+            >${ICONS.close}</button>
+        </header>
+
+        <section class="cpeasy-toolbar" aria-label="Editor controls">
+            <div class="cpeasy-file-tab">
+                <span class="cpeasy-file-icon">C++</span>
+                <span>main.cpp</span>
+            </div>
+
+            <div class="cpeasy-toolbar-spacer"></div>
+
+            <div class="cpeasy-timer" title="Practice timer">
+                <span
+                    id="cpeasy-timer-dot"
+                    class="cpeasy-timer-dot"
+                ></span>
+
+                <span
+                    id="cpeasy-stopwatch-display"
+                    class="cpeasy-time-text"
+                >00:00</span>
+
+                <button
+                    id="cpeasy-timer-toggle"
+                    class="cpeasy-icon-btn cpeasy-icon-btn-sm"
+                    type="button"
+                    title="Pause timer"
+                    aria-label="Pause timer"
+                >${ICONS.pause}</button>
+
+                <button
+                    id="cpeasy-timer-reset"
+                    class="cpeasy-icon-btn cpeasy-icon-btn-sm"
+                    type="button"
+                    title="Reset timer"
+                    aria-label="Reset timer"
+                >${ICONS.reset}</button>
+            </div>
+
+            <button
+                id="cpeasy-run-btn"
+                class="cpeasy-primary-btn"
+                type="button"
+            >${ICONS.play}<span>Run</span></button>
+
+            <button
+                id="cpeasy-submit-btn"
+                class="cpeasy-submit-btn"
+                type="button"
+                title="Open the Codeforces submission page"
+            >Submit ↗</button>
+        </section>
+
+        <main class="cpeasy-workspace">
+            <section
+                id="cpeasy-editor-wrapper"
+                class="cpeasy-editor-panel"
+                aria-label="C++ code editor"
+            >
+                <textarea id="cpeasy-textarea-editor"></textarea>
             </section>
 
-            <main class="cpeasy-workspace">
-                <section id="cpeasy-editor-wrapper" class="cpeasy-editor-panel">
-                    <textarea id="cpeasy-textarea-editor"></textarea>
-                </section>
-                <div id="cpeasy-resizer-y" class="cpeasy-resizer-y" aria-label="Resize output panel">
-                    <span class="cpeasy-resizer-grip"></span>
-                </div>
-                <section id="cpeasy-console-wrapper" class="cpeasy-console-panel">
-                    <div class="cpeasy-console-head">
-                        <div>
-                            <div class="cpeasy-console-title">Sample Tests</div>
-                            <div class="cpeasy-console-subtitle">Input, output, expected output, and verdict per case</div>
-                        </div>
-                        <div id="cpeasy-run-timing" class="cpeasy-run-timing"></div>
-                    </div>
-                    <div id="cpeasy-console-output" class="cpeasy-console-output">
-                        <div class="cpeasy-empty-state">
-                            <strong>Ready when you are.</strong>
-                            <span>Click Run to execute the sample tests from this problem.</span>
-                        </div>
-                    </div>
-                </section>
-            </main>
+            <div
+                id="cpeasy-resizer-y"
+                class="cpeasy-resizer-y"
+                aria-label="Resize output panel"
+            >
+                <span class="cpeasy-resizer-grip"></span>
+            </div>
 
-            <footer class="cpeasy-footer">
-                <button id="cpeasy-submit-btn" class="cpeasy-submit-btn" type="button">Go to Codeforces Submit</button>
-            </footer>
-        </div>
-    `;
+            <section
+                id="cpeasy-console-wrapper"
+                class="cpeasy-console-panel"
+                aria-label="Test results"
+            >
+                <div class="cpeasy-console-head">
+                    <div class="cpeasy-console-title">Tests</div>
+                    <div
+                        id="cpeasy-run-timing"
+                        class="cpeasy-run-timing"
+                    ></div>
+                </div>
+
+                <div
+                    id="cpeasy-console-output"
+                    class="cpeasy-console-output"
+                >
+                    <div class="cpeasy-empty-state">
+                        <strong>Ready to run.</strong>
+                        <span>Run the samples or try a custom input.</span>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="cpeasy-footer">
+            <select
+                id="cpeasy-lang-select"
+                class="cpeasy-select"
+                aria-label="Editor language: C++"
+                title="C++"
+                disabled
+            >
+                <option value="text/x-c++src">C++</option>
+            </select>
+        </footer>
+    </div>
+`;
     body.appendChild(rightPane);
 
     initializeCpeasyIde({ rightPane, body, mainContent, actionBtn })
@@ -433,7 +521,7 @@ allowedFontSizes.forEach(size => {
 });
 
 fontSizeSelect.value = "14";
-langSelect.insertAdjacentElement("afterend", fontSizeSelect);
+rightPane.querySelector("#cpeasy-font-size-slot").append(fontSizeSelect);
 
 function applyFontSize(size) {
     if (!allowedFontSizes.includes(size)) return;
@@ -1266,7 +1354,7 @@ setRunButtonState(true);
         );
 
         submitBtn.disabled = false;
-        submitBtn.innerText = "Go to Codeforces Submit";
+        submitBtn.innerText = "Submit ↗";
     }
 }
 
