@@ -701,3 +701,25 @@
         display: none !important;
     }
 }
+
+
+/* Expand the IDE while keeping its existing controls and results. */
+#cpeasy-ide-container.cpeasy-focus-mode {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    min-width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100vh !important;
+    border-left: none !important;
+}
+
+/* Hide only the problem container while focus mode is active. */
+.cpeasy-left-content.cpeasy-focus-hidden {
+    display: none !important;
+}
+
+/* Horizontal resizing is unnecessary in focus mode. */
+#cpeasy-ide-container.cpeasy-focus-mode #cpeasy-resizer-x {
+    display: none !important;
+}

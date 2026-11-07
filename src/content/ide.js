@@ -366,6 +366,8 @@ async function initializeCpeasyIde({ rightPane, body, mainContent, actionBtn }) 
     const langKey = 'cpeasy_lang_pref';
     const codeKeyFor = (mode) => `${baseKey}_${mode.replace(/[^a-z0-9]/gi, '_')}`;
 
+
+
     const getCodeForMode = async (mode) => {
     const key = codeKeyFor(mode);
     const stored = await chrome.storage.local.get(key);
@@ -540,114 +542,94 @@ editor.on("change", () => {
     void saveDraft(previousMode, editor.getValue());
 });
 
-    const exportControls = document.createElement("div");
-exportControls.style.cssText =
-    "display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;";
+let lastRunSnapshot = null;
 
-const copyCodeBtn = document.createElement("button");
-copyCodeBtn.type = "button";
-copyCodeBtn.className = "cpeasy-secondary-btn";
-copyCodeBtn.textContent = "Copy code";
+const staleResultsNotice = document.createElement("div");
+staleResultsNotice.setAttribute("role", "status");
+staleResultsNotice.style.cssText =
+    "display:none;padding:8px 12px;color:#fbbf24;" +
+    "background:rgba(251,191,36,0.08);font-size:12px;";
 
-const downloadCodeBtn = document.createElement("button");
-downloadCodeBtn.type = "button";
-downloadCodeBtn.className = "cpeasy-secondary-btn";
-downloadCodeBtn.textContent = "Download code";
+consoleOutput.before(staleResultsNotice);
 
-const exportStatus = document.createElement("span");
-exportStatus.setAttribute("role", "status");
-exportStatus.style.cssText = "font-size:12px;color:#9aa6b2;";
-
-exportControls.append(copyCodeBtn, downloadCodeBtn, exportStatus);
-submitBtn.before(exportControls);
-
-copyCodeBtn.addEventListener("click", async () => {
-    const code = editor.getValue();
-
-    if (!code.trim()) {
-        exportStatus.textContent = "The editor is empty.";
+function updateResultsFreshness() {
+    if (!lastRunSnapshot) {
+        staleResultsNotice.style.display = "none";
         return;
     }
 
-    copyCodeBtn.disabled = true;
+    const codeChanged =
+        editor.getValue() !== lastRunSnapshot.code;
 
-    try {
-        await navigator.clipboard.writeText(code);
-        exportStatus.textContent = "Copied!";
-    } catch (error) {
-        exportStatus.textContent =
-            "Copy failed. Select your code and press Ctrl+C.";
-        console.warn("cpeasy: Clipboard copy failed:", error);
-    } finally {
-        copyCodeBtn.disabled = false;
+    const languageChanged =
+        editor.getOption("mode") !== lastRunSnapshot.mode;
+
+    const outdated = codeChanged || languageChanged;
+
+    staleResultsNotice.textContent = languageChanged
+        ? "Language changed — run again. Results below belong to the previous run."
+        : "Code changed — run again. Results below belong to the previous run.";
+
+    staleResultsNotice.style.display = outdated ? "block" : "none";
+}
+
+function recordRunSnapshot(code, mode) {
+    lastRunSnapshot = { code, mode };
+    updateResultsFreshness();
+}
+
+// Separate from autosave so loading another language's draft is checked too.
+editor.on("change", updateResultsFreshness);
+
+const closeIdeBtn = document.getElementById("close-cpeasy-ide");
+
+const headerActions = document.createElement("div");
+headerActions.style.cssText =
+    "display:flex;align-items:center;gap:8px;";
+
+const focusModeBtn = document.createElement("button");
+focusModeBtn.type = "button";
+focusModeBtn.className = "cpeasy-icon-btn";
+focusModeBtn.textContent = "⛶";
+focusModeBtn.title = "Expand editor";
+focusModeBtn.setAttribute("aria-label", "Expand editor");
+focusModeBtn.setAttribute("aria-pressed", "false");
+
+closeIdeBtn.before(headerActions);
+headerActions.append(focusModeBtn, closeIdeBtn);
+
+function setFocusMode(enabled) {
+    rightPane.classList.toggle("cpeasy-focus-mode", enabled);
+
+    if (mainContent) {
+        mainContent.classList.toggle("cpeasy-focus-hidden", enabled);
     }
-});
 
-downloadCodeBtn.addEventListener("click", () => {
-    const code = editor.getValue();
+    focusModeBtn.textContent = enabled ? "↙" : "⛶";
+    focusModeBtn.title = enabled
+        ? "Return to split view"
+        : "Expand editor";
 
-    if (!code.trim()) {
-        exportStatus.textContent = "The editor is empty.";
-        return;
-    }
+    focusModeBtn.setAttribute("aria-label", focusModeBtn.title);
+    focusModeBtn.setAttribute("aria-pressed", String(enabled));
 
-    const extensions = {
-        "text/x-c++src": "cpp",
-        "text/x-csrc": "c",
-        "text/x-java": "java",
-        "text/x-python": "py",
-        "javascript": "js",
-        "text/x-csharp": "cs",
-        "text/x-rustsrc": "rs",
-        "text/x-go": "go"
-    };
+    requestAnimationFrame(() => {
+        if (!rightPane.isConnected) return;
 
-    const mode = previousMode || langSelect.value;
-    const extension = extensions[mode] || "txt";
+        editor.setSize("100%", "100%");
+        editor.refresh();
+        editor.focus();
+    });
+}
 
-    const problemName = window.location.pathname
-        .split("/")
-        .filter(Boolean)
-        .join("-")
-        .replace(/[^a-zA-Z0-9_-]/g, "_") || "solution";
+focusModeBtn.addEventListener("click", () => {
+    const enabled = rightPane.classList.contains("cpeasy-focus-mode");
+    setFocusMode(!enabled);
+});    
 
-    // The default Java template declares public class Main.
-    const filename = extension === "java"
-        ? "Main.java"
-        : `${problemName}.${extension}`;
 
-    let objectUrl = null;
-    const link = document.createElement("a");
-
-    try {
-        const blob = new Blob([code], {
-            type: "text/plain;charset=utf-8"
-        });
-
-        objectUrl = URL.createObjectURL(blob);
-        link.href = objectUrl;
-        link.download = filename;
-        link.hidden = true;
-
-        document.body.appendChild(link);
-        link.click();
-
-        exportStatus.textContent = `Download requested: ${filename}`;
-    } catch (error) {
-        exportStatus.textContent = "Could not download the code.";
-        console.warn("cpeasy: Download failed:", error);
-    } finally {
-        link.remove();
-
-        if (objectUrl) {
-            const urlToRelease = objectUrl;
-            setTimeout(() => URL.revokeObjectURL(urlToRelease), 10000);
-        }
-    }
-});
-
-    const resetTemplateBtn = document.getElementById(
-    'cpeasy-reset-template-btn'
+const resetTemplateBtn = document.getElementById(
+    "cpeasy-reset-template-btn"
 );
 
 if (resetTemplateBtn) {
@@ -672,34 +654,34 @@ if (resetTemplateBtn) {
         }
     };
 
-    resetTemplateBtn.addEventListener('click', () => {
-        const mode = langSelect.value;
-        const currentCode = editor.getValue();
-        const template = CPEASY_CONFIG.templates[mode] || '';
+    resetTemplateBtn.addEventListener("click", () => {
+    const mode = previousMode || langSelect.value;
+    const currentCode = editor.getValue();
+    const template = CPEASY_CONFIG.templates[mode] || "";
 
-        if (currentCode === template) return;
+    if (currentCode === template) return;
 
-        const confirmed = window.confirm(
-            'Replace your current solution with the default template?\n\n' +
-            'Your current code will be saved so you can restore it.'
+    if (!window.confirm(
+        "Replace your current solution with the built-in template?\n\n" +
+        "Your current code will be saved as a recovery copy."
+    )) {
+        return;
+    }
+
+    try {
+        localStorage.setItem(backupKeyFor(mode), currentCode);
+    } catch (error) {
+        console.error("cpeasy: Could not save recovery copy:", error);
+        window.alert(
+            "Could not save a recovery copy. Your code has not been reset."
         );
+        return;
+    }
 
-        if (!confirmed) return;
-
-        try {
-            // Save successfully before replacing anything in the editor.
-            localStorage.setItem(backupKeyFor(mode), currentCode);
-        } catch {
-            window.alert(
-                'Could not save a recovery copy. Your code has not been reset.'
-            );
-            return;
-        }
-
-        editor.setValue(template);
-        editor.focus();
-        updateRestoreButton();
-    });
+    editor.setValue(template);
+    editor.focus();
+    updateRestoreButton();
+});
 
     restoreBtn.addEventListener('click', () => {
         const mode = langSelect.value;
@@ -893,8 +875,9 @@ stopwatchInterval = setInterval(() => {
         );
     } finally {
         rightPane.inert = false;
-        editor.refresh();
-        editor.focus();
+editor.refresh();
+editor.focus();
+updateResultsFreshness();
 
         // Refresh the recovery button for the language actually selected.
         const restoreBtn = resetTemplateBtn?.nextElementSibling;
@@ -945,7 +928,8 @@ runBtn.setAttribute(
 document.getElementById('close-cpeasy-ide').addEventListener('click', () => {
     if (stopwatchInterval) clearInterval(stopwatchInterval);
     cleanupResizers();
-    rightPane.remove();
+setFocusMode(false);
+rightPane.remove();
         body.classList.remove('cpeasy-split-body');
         body.style.display = '';
         body.style.width = '';
@@ -1012,6 +996,7 @@ if (runUnits.length === 0) {
     return;
 }
 
+recordRunSnapshot(code, selectedMode);
 setRunTiming("Running...");
 setRunButtonState(true);
 
@@ -1081,7 +1066,8 @@ setRunButtonState(true);
     if (customIndex < 0) return;
 
     activeTabIndex = customIndex;
-    setRunButtonState(true);
+recordRunSnapshot(code, selectedMode);
+setRunButtonState(true);
     renderTestInterface(latestCases, latestResults);
     setRunTiming("Running custom input…");
 
@@ -1151,7 +1137,8 @@ setRunButtonState(true);
                 latestResults[unit.displayIndex] = {
     ...normalizeRunResult(response, latestCases[unit.displayIndex]),
     executionTimeSeconds: response?.time,
-    memoryKilobytes: response?.memory
+    memoryKilobytes: response?.memory,
+    inputUsed: unit.stdin
 };
             }
         } catch (apiError) {
@@ -1159,6 +1146,7 @@ setRunButtonState(true);
                 status: "Execution Error",
                 verdict: "error",
                 actual: "",
+                inputUsed: unit.stdin,
                 error: apiError.message || "Connection error"
             };
             displayIndices.forEach((idx) => { latestResults[idx] = failResult; });
@@ -1385,10 +1373,30 @@ customInputArea.disabled = runBtn.disabled;
 customRunBtn.addEventListener("click", runCustomCode);
             const customArea = document.getElementById('cpeasy-custom-textarea');
             if (customArea) {
-                customArea.addEventListener('input', (event) => {
-                    selectedCase.input = event.target.value;
-                    localStorage.setItem(customInputKey, event.target.value);
-                });
+                customArea.addEventListener("input", event => {
+    selectedCase.input = event.target.value;
+
+    const resultIndex = testCases.indexOf(selectedCase);
+    const currentResult = results[resultIndex];
+
+    const inputChanged =
+        typeof currentResult?.inputUsed === "string" &&
+        currentResult.inputUsed !== selectedCase.input;
+
+    const notice = contentContainer.querySelector(
+        "#cpeasy-custom-stale-notice"
+    );
+
+    if (notice) {
+        notice.style.display = inputChanged ? "block" : "none";
+    }
+
+    try {
+        localStorage.setItem(customInputKey, selectedCase.input);
+    } catch (error) {
+        console.warn("cpeasy: Could not save custom input:", error);
+    }
+});
             }
             return;
         }
@@ -1586,42 +1594,64 @@ customRunBtn.addEventListener("click", runCustomCode);
 }
 
     function renderCustomCase(tc, result) {
-        return `
-            <div class="cpeasy-custom-input-wrap">
-                <label for="cpeasy-custom-textarea">Custom Input</label>
-                <textarea id="cpeasy-custom-textarea" placeholder="Paste custom input here...">${CpeasyUtils.escapeHtml(tc.input)}</textarea>
-                <button
-    id="cpeasy-run-custom-btn"
-    class="cpeasy-primary-btn"
-    type="button"
-    style="margin-top: 10px;"
->
-    Run Custom
-</button>
-                </div>
-            ${result ? `
-                <div class="cpeasy-verdict is-${result.verdict}">
-                    <span class="cpeasy-verdict-icon">${verdictIcon(result.verdict)}</span>
-                    <span>${CpeasyUtils.escapeHtml(result.status)}</span>
-                </div>
+    const inputChanged =
+        typeof result?.inputUsed === "string" &&
+        result.inputUsed !== tc.input;
 
-                ${renderExecutionStats(result)}
+    return `
+        <div class="cpeasy-custom-input-wrap">
+            <label for="cpeasy-custom-textarea">Custom Input</label>
 
-<div class="cpeasy-io-grid">
-    ${renderDataBlock("Your Output", result.actual || "No output")}
+            <textarea
+                id="cpeasy-custom-textarea"
+                placeholder="Paste custom input here..."
+            >${CpeasyUtils.escapeHtml(tc.input)}</textarea>
 
-                <div class="cpeasy-io-grid">
-                    ${renderDataBlock("Your Output", result.actual || "No output")}
-                </div>
-                ${result.error ? renderErrorBlock(result.error) : ''}
-            ` : `
-                <div class="cpeasy-muted-note">
-    Run Custom executes only this input, including empty input.
-The top Run button executes samples and any nonempty custom input.
-</div>
-            `}
-        `;
-    }
+            <button
+                id="cpeasy-run-custom-btn"
+                class="cpeasy-primary-btn"
+                type="button"
+                style="margin-top:10px;"
+            >
+                Run Custom
+            </button>
+        </div>
+
+        <div
+            id="cpeasy-custom-stale-notice"
+            role="status"
+            style="display:${inputChanged ? "block" : "none"};
+                   padding:8px 0;color:#fbbf24;font-size:12px;"
+        >
+            Input changed — run again. Output below belongs to the previous input.
+        </div>
+
+        ${result ? `
+            <div class="cpeasy-verdict is-${result.verdict}">
+                <span class="cpeasy-verdict-icon">
+                    ${verdictIcon(result.verdict)}
+                </span>
+                <span>${CpeasyUtils.escapeHtml(result.status)}</span>
+            </div>
+
+            ${renderExecutionStats(result)}
+
+            <div class="cpeasy-io-grid">
+                ${renderDataBlock(
+                    "Your Output",
+                    result.actual || "(empty output)"
+                )}
+            </div>
+
+            ${result.error ? renderErrorBlock(result.error) : ""}
+        ` : `
+            <div class="cpeasy-muted-note">
+                Run Custom executes only this input, including empty input.
+                The top Run button executes samples and any nonempty custom input.
+            </div>
+        `}
+    `;
+}
 
     function renderDataBlock(label, value) {
         return `
